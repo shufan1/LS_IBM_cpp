@@ -1,0 +1,72 @@
+{
+    "ControlVar": {
+        "output_folder": "output/",
+        "time": 0.0,
+        "timedt": 50000.0,
+        "savedat": 1,
+        "rat": 0,
+        "tol": 0.005,
+        "f": 0,
+        "tolbicg": 0.00001,
+        "maxit": 2000,
+        "disc_scheme_vel": 2,
+        "flow_steady": true,
+        "imposePresBC": "top",
+        "transport_steady": false,
+        "noLStime": 3,
+        "iStart": 0,
+        "tol_q": 0.0005,
+        "tolbicg_c": 0.00005,
+        "maxit_c": 2000,
+        "ADRE": true,
+        "ksp_type_momentum": "bcgs",
+        "pc_type_momentum": "ilu",
+        "ksp_type_pressure": "cg",
+        "pc_type_pressure": "gamg"
+    },
+
+    "geometry": {
+        "geometry": "grain",
+        "lengthUnit": 0.2,
+        "buffer_dist": 0.0,
+        "grid": {
+            "r": 1.1,
+            "expon": true,
+            "A": 2.0,
+            "dvdxdy": 40.0,
+            "uniform": true,
+            "zoomedAreax": 1.5,
+            "zoomedAreay": 1.5,
+            "Lx_l": 0.03,
+            "Ly_b": 0.01
+        }
+    },
+
+    "physicalParameters": {
+        "Re": 0.6,
+        "uinflow": 1.0,
+        "Pe": 600.0,
+        "Np": 3,
+        "phi_inlet": [1.0, 0.0, 0.0],
+        "phi_init": [1.0, 0.0, 0.0],
+        "density": 1.0,
+        "dimensional": false
+    },
+
+    "boundaryConditions": {
+        "u": {"BC_e": 3, "BC_w": 1, "BC_n": 1, "BC_s": 1},
+        "v": {"BC_n": 1, "BC_s": 1, "BC_e": 3, "BC_w": 1},
+        "p": {"BC_n": 3, "BC_s": 3, "BC_e": 3, "BC_w": 3, "P0_e": 0.0},
+        "phi": {"BC_e": 3, "BC_w": 1, "BC_n": 3, "BC_s": 3},
+
+        "immersedBoundary": {
+            "velocity": {"q": 0.0, "alpha": 0.0, "beta": 1.0, "BQu": 0, "BQv": 0},
+            "scalar": {"q_phi": 0.0, "alpha_phi": -1.0, "beta_phi": 178.0, "BQp": 0,
+                       "uniMineral": true, "dissolution": true},
+            "u_inside_psi": 0.0,
+            "phi_inside_psi": 0.0
+        }
+    },
+
+    "dt_man": 0.05
+}

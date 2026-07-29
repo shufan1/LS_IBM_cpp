@@ -1,0 +1,9 @@
+# Slurm's per-job stdout/stderr (run.sbatch and run_smoketest.sbatch point
+# their -o/-e here). One pair of files per job ID, specific to one run on one
+# cluster -- never worth sharing.
+#
+# This file is the one exception to its own rule, and exists so git keeps the
+# directory itself: sbatch fails outright if the -o/-e directory does not
+# already exist, so it has to survive a fresh clone.
+*
+!.gitignore

@@ -1,0 +1,67 @@
+# ---------------------------------------------------------------------------
+# Build trees. Each is a full CMake configuration that regenerates from
+# CMakeLists.txt, so none of it belongs in the repo:
+#   build/      the normal Release tree (build.sh writes here)
+#   build_asan/ an AddressSanitizer tree, configured by hand with
+#               -fsanitize=address -fno-omit-frame-pointer -g -O0, used to
+#               catch out-of-bounds writes. Not referenced by build.sh.
+# The catch-all matches any other build* tree (build_debug, etc.) too.
+# ---------------------------------------------------------------------------
+build*/
+
+# Compiled executables. Kept as an empty directory so build.sh has somewhere
+# to write without mkdir'ing first.
+bin/*
+!bin/.gitkeep
+
+# Slurm job output collected here by the sbatch scripts.
+logs/*
+!logs/.gitkeep
+
+# Slurm writes these wherever a job happens to run, not just under logs/.
+*.out
+*.err
+
+# ---------------------------------------------------------------------------
+# Project directories. A project holds one simulation's inputs and its
+# outputs; only the hand-written inputs are worth tracking. Example_Project
+# doubles as the template a new project gets copied from, so its config and
+# run scripts DO belong in the repo -- everything a run generates does not.
+# ---------------------------------------------------------------------------
+Projects/*/output/*
+!Projects/*/output/.gitkeep
+
+# plots/ and sherlock_log/ are NOT listed here on purpose. Each owns a local
+# .gitignore that ignores its own contents but keeps itself, so the directory
+# survives a fresh clone (the plotting script and sbatch both need it to
+# already exist). Excluding those directories from here instead would stop git
+# descending into them, and the local .gitignore would never be read.
+
+# Any project other than the Example_Project template is somebody's actual
+# simulation -- local scratch, not shared code.
+Projects/*
+!Projects/README.md
+!Projects/Example_Project/
+
+# Byte-identical duplicates of Projects/Example_Project/coordinates.json and
+# A_0.2.json. Left out until it's decided which location owns the grid
+# geometry, rather than committing two copies that can drift apart.
+data/
+
+# ---------------------------------------------------------------------------
+# Editor / tooling droppings
+# ---------------------------------------------------------------------------
+.ipynb_checkpoints/
+__pycache__/
+*.py[cod]
+
+# Compiled objects and libraries, in case anything is ever built in-tree
+# rather than in build/.
+*.o
+*.a
+*.so
+*.so.*
+
+*.swp
+*~
+.DS_Store
