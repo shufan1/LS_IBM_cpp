@@ -41,7 +41,7 @@ Projects/*/output/*
 # simulation -- local scratch, not shared code.
 Projects/*
 !Projects/README.md
-!Projects/Example_Project/
+!Projects/Example_Project/*
 
 # Byte-identical duplicates of Projects/Example_Project/coordinates.json and
 # A_0.2.json. Left out until it's decided which location owns the grid

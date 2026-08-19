@@ -1,0 +1,170 @@
+Revert "add LS, but transport convergence tolerance matches with matlab overwrite by last species version"
+
+This reverts commit 600d7da72041103aa069f52f73abc42da7547d3b.
+
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# Committer: Shufan Xia <sxia11@sh02-ln02.stanford.edu>
+#
+# On branch main
+# Your branch is ahead of 'origin/main' by 3 commits.
+#   (use "git push" to publish your local commits)
+#
+# Changes to be committed:
+#   (use "git reset HEAD <file>..." to unstage)
+#
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_1_1.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_1_10.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_1_2.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_1_3.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_1_4.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_1_5.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_1_6.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_1_7.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_1_8.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_1_9.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_2_1.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_2_10.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_2_2.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_2_3.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_2_4.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_2_5.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_2_6.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_2_7.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_2_8.m
+/bin/bash: wq:: command not found
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_3_1.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_3_2.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_3_3.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_3_4.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_3_5.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_3_6.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_3_7.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_3_8.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_0_3_9.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_1_1.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_1_10.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_1_2.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_1_3.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_1_4.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_1_5.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_1_6.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_1_7.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_1_8.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_1_9.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_2_1.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_2_10.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_2_2.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_2_3.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_2_4.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_2_5.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_2_6.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_2_7.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_2_8.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_2_9.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_3_1.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_3_2.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_3_3.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_3_4.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_3_5.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_3_6.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_3_7.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_3_8.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_1_3_9.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_1_1.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_1_10.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_1_2.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_1_3.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_1_4.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_1_5.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_1_6.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_1_7.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_1_8.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_1_9.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_2_1.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_2_10.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_2_2.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_2_3.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_2_4.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_2_5.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_2_6.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_2_7.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_2_8.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_2_9.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_3_1.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_3_2.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_3_3.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_3_4.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_3_5.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_3_6.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_3_7.m
+#	new file:   Projects/Example_Project/output_ADRE/cpp_phi_2_3_8.m
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_10_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_10dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_1_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_1dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_2_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_2dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_3_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_3dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_4_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_4dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_5_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_5dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_6_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_6dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_7_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_7dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_8_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_8dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_9_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE1_9dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_10_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_10dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_1_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_1dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_2_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_2dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_3_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_3dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_4_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_4dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_5_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_5dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_6_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_6dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_7_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_7dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_8_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_8dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_9_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE2_9dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_1_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_1dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_2_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_2dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_3_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_3dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_4_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_4dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_5_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_5dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_6_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_6dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_7_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_7dt.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_8_ghost.json
+#	new file:   Projects/Example_Project/output_ADRE/dataRDE3_8dt.json
+#
+# Changes not staged for commit:
+#   (use "git add <file>..." to update what will be committed)
+#   (use "git checkout -- <file>..." to discard changes in working directory)
+#
+#	modified:   .gitignore
+#	modified:   smoketest.sbatch
+#
+# Untracked files:
+#   (use "git add <file>..." to include in what will be committed)
+#
+#	:

@@ -2,8 +2,8 @@
 #SBATCH -p serc
 #SBATCH --time=00:10:00
 #SBATCH --cpus-per-task=1
-#SBATCH --nodes=2
-#SBATCH --ntasks-per-node=2
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
 #SBATCH -J ls_ibm_smoketest
 #SBATCH -o logs/smoketest.%j.out
 #SBATCH -e logs/smoketest.%j.err
