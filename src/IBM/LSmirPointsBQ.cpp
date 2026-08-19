@@ -8,7 +8,7 @@
 // of routines MATLAB's own `A = A^(-1)` calls internally, used here
 // instead of a hand-written elimination so this port's ghost-cell mirror-
 // point interpolation weights (N=4 bilinear / N=6 biquadratic) round the
-// same way MATLAB's do, U ghostnot just to the same mathematical answer.
+// same way MATLAB's do, not just to the same mathematical answer.
 extern "C" {
 void dgetrf_(int *m, int *n, double *a, int *lda, int *ipiv, int *info);
 void dgetri_(int *n, double *a, int *lda, int *ipiv, double *work, int *lwork, int *info);
@@ -53,15 +53,11 @@ void invertMatrix(std::vector<std::vector<double>> &A) {
 void LSmirPointsBQ(const std::vector<double> &x, const std::vector<double> &y, double alpha,
                     double beta, double q, const std::vector<double> &X_g,
                     const std::vector<double> &Y_g, int BQ, double dx, const Field2D &psi,
-                    const Field2D &nx, const Field2D &ny, IBMCoeff &ibm_coeff, bool computeA1g,
-                    bool applyEdgeSafeguard, double x_0, double lx) {
+                    const Field2D &nx, const Field2D &ny, IBMCoeff &ibm_coeff) {
     const int numg = static_cast<int>(X_g.size());
     const double Delta = std::sqrt(2.0) * dx;
 
     ibm_coeff.numg = numg;
-    ibm_coeff.Delta = Delta;
-    ibm_coeff.betaG.resize(numg);
-    ibm_coeff.r_g.resize(numg);
     ibm_coeff.I_m.resize(numg);
     ibm_coeff.J_m.resize(numg);
     ibm_coeff.I1.resize(numg);
@@ -250,35 +246,19 @@ void LSmirPointsBQ(const std::vector<double> &x, const std::vector<double> &y, d
             //              phi_g = Σ lambda_g_k *phi_k + A_1
         double r_g = std::abs(psi(i, j));  // distance from the ghost cell itself to the true interface
         double d = Delta;
-        ibm_coeff.r_g[k] = r_g;
+        double denom = 2.0 * alpha - beta * d;
 
+        double B = (2.0 * alpha + 2.0 * beta * r_g + beta * r_g * r_g / d) / denom;
+        double E = (-alpha * d - beta * d * r_g + (alpha / d - beta) * r_g * r_g) / denom;
 
-        // if the mirror poitn is too close to the one of the four outer edges of the computational domain
-        // use 0 reactivity 
-        double betaUse = beta;
-        if (applyEdgeSafeguard) {
-            int yLen = static_cast<int>(y.size());
-            if (J >= yLen - 5 || J <= 4 || x[I] <= x_0 || x[I] >= lx - x_0) betaUse = 0.0;
-        }
-        ibm_coeff.betaG[k] = betaUse;
-
-        double denom = 2.0 * alpha - betaUse * d;
-
-        double B = (2.0 * alpha + 2.0 * betaUse * r_g + betaUse * r_g * r_g / d) / denom;
-        double E = (-alpha * d - betaUse * d * r_g + (alpha / d - betaUse) * r_g * r_g) / denom;
-
-        // MATLAB: A1_g's own formula genuinely differs between BQ==1 and BQ==0.
-        // Skipped entirely when computeA1g is false -- see LSmirPointsBQ.h's
-        // comment for why callers that only need lambda_g_k/geometry (not a
-        // real, current q) ask for that.
-        if (computeA1g) {
-            ibm_coeff.A1_g[k] = (BQ == 1) ? 4.0 * Delta * q / (-betaUse * Delta + 2.0 * alpha)
-                                           : q * (d + 2.0 * r_g + r_g * r_g / d) / denom;
-        }
+        // MATLAB: A1_g's own formula genuinely differs between BQ==1 and BQ==0 
+        double A1_g_val = (BQ == 1) ? 4.0 * Delta * q / (-beta * Delta + 2.0 * alpha)
+                                     : q * (d + 2.0 * r_g + r_g * r_g / d) / denom;
 
         std::vector<double> lambda(b.size());
         for (size_t c = 0; c < b.size(); ++c) lambda[c] = B * b[c] + E * e[c];
 
+        ibm_coeff.A1_g[k] = A1_g_val;
         ibm_coeff.lambda_g_1[k] = lambda[0];
         ibm_coeff.lambda_g_2[k] = lambda[1];
         ibm_coeff.lambda_g_3[k] = lambda[2];

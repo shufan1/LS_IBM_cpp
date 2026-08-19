@@ -14,22 +14,14 @@
 //   "boundaryConditions":  u/v/p/phi domain-edge BC codes, plus
 //                          "immersedBoundary" (the Robin-BC coefficients
 //                          at the solid/mineral surface -- q/alpha/beta
-//                          for velocity, alpha_phi (shared scalar) and
-//                          q_phi (a 3-element per-species array) for the
-//                          scalar (beta_phi is also per-species, but from
-//                          the reaction matrix -- see defineReactivity()
-//                          -- not config.json), and u_inside_psi/
-//                          phi_inside_psi)
-//   "levelSet":            n_iter_ReLS, TimeSchemeLS, TimeSchemeRLS,
-//                          dtau_fac, LSgamma_fac, nLSupdate -- the
-//                          level-set solver's tuning knobs, all
-//                          hardcoded in setUpVariablesNonDim.m
+//                          for velocity, q_phi/alpha_phi/beta_phi for
+//                          the scalar, and u_inside_psi/phi_inside_psi)
+//   "dt_man":              top-level (not under any section above)
 #include "VariableNonDim.h"
 #include "Utilities/Coordinates.h"
 #include "Utilities/Field2D.h"
 #include "Utilities/Interp.h"
 #include "SolveLS/LSInitialize.h"
-#include "SolveLS/LSnormals.h"
 #include <json-c/json.h>
 #include <cmath>
 #include <fstream>
@@ -143,6 +135,7 @@ VariableNonDim::VariableNonDim(const std::string &configPath) : VariableNonDim()
     json_object *ibScalar = getSection(ibSec, "scalar");
     getIfPresent(ibScalar, "q_phi", q_phi);
     getIfPresent(ibScalar, "alpha_phi", alpha_phi);
+    getIfPresent(ibScalar, "beta_phi", beta_phi);
     getIfPresent(ibScalar, "BQp", BQp);
     getIfPresent(ibScalar, "uniMineral", uniMineral);
     getIfPresent(ibScalar, "dissolution", dissolution);
@@ -150,13 +143,7 @@ VariableNonDim::VariableNonDim(const std::string &configPath) : VariableNonDim()
     getIfPresent(ibSec, "u_inside_psi", u_inside_psi);
     getIfPresent(ibSec, "phi_inside_psi", phi_inside_psi);
 
-    json_object *lsSec = getSection(root, "levelSet");
-    getIfPresent(lsSec, "n_iter_ReLS", n_iter_ReLS);
-    getIfPresent(lsSec, "TimeSchemeLS", TimeSchemeLS);
-    getIfPresent(lsSec, "TimeSchemeRLS", TimeSchemeRLS);
-    getIfPresent(lsSec, "dtau_fac", dtau_fac);
-    getIfPresent(lsSec, "LSgamma_fac", LSgamma_fac);
-    getIfPresent(lsSec, "nLSupdate", nLSupdate);
+    getIfPresent(root, "dt_man", dt_man);
 
     json_object_put(root);
 
@@ -225,26 +212,23 @@ Variables VariableNonDim::getVariables(const Domain &domain) const {
     v.Re = Re;
     v.density = density;
     v.dimensional = dimensional;
+    // intVelCoeff = beta_phi * molarVol / D (MATLAB: molarVol = 36.9,
+    // hardcoded there too for the non-bi-mineral case).
+    v.intVelCoeff = beta_phi * 36.9 / D;
+    v.intVelMethod = 2;
     v.alpha_u = 0.7;
     v.alpha_v = 0.7;  // MATLAB: alpha_v = alpha_u
     v.alpha_p = 1.0;
     v.alpha_q = 1.0;
-    // v.dt is NOT set here -- main.cpp assigns it from ControlVar::dt_man,
-    // before defineLSvariables() reads it for dtLS.
+    v.dt = dt_man;
     v.Pe = Pe;
     v.Np = Np;
     v.phi_inlet = phi_inlet;
     v.phi_init = phi_init;
     v.dissolution = dissolution;
-    // Level-set knobs, from config.json's "levelSet" section (defaults
-    // match setUpVariablesNonDim.m). The two _fac multipliers are carried
-    // through so defineLSvariables() can apply them once it has DOMAIN.
-    v.n_iter_ReLS = n_iter_ReLS;
-    v.TimeSchemeLS = TimeSchemeLS;
-    v.TimeSchemeRLS = TimeSchemeRLS;
-    v.nLSupdate = nLSupdate;
-    v.dtau_fac = dtau_fac;
-    v.LSgamma_fac = LSgamma_fac;
+    v.n_iter_ReLS = 4;
+    v.TimeSchemeLS = "RK3";
+    v.TimeSchemeRLS = "RK3";
     // v.A/v.inv_A: filled by defineReactivity(), not here.
     return v;
 }
@@ -279,13 +263,10 @@ BC VariableNonDim::getBC(const Domain &domain, const StateVar &stateVar, const L
     bc.V_c.assign(domain.imax + 1, 0.0);
     bc.V_d.assign(domain.imax + 1, 0.0);
 
-    // phi_a: (1, jmax+1, Np) in MATLAB -- one vector<double> (length
-    // jmax+1) per species, uniformly phi_inlet[i_s]. MATLAB additionally
-    // masks this by (psi(1,:)>0) before storing it -- this port applies
-    // that mask at the point of use instead (rhsPhiADRE.cpp's S_w(1,j)
-    // term), so phi_a itself stays the plain per-species inlet value.
+    // phi_a: (1, jmax+1, Np) in MATLAB -- one zero-filled vector<double>
+    // (length jmax+1) per species. Real per-species inlet values need
+    // LS.psi (masks by psi(1,:)>0) -- still TODO, needs LSInitialize().
     bc.phi_a.assign(Np, std::vector<double>(domain.jmax + 1, 0.0));
-    for (int i_s = 0; i_s < Np; ++i_s) bc.phi_a[i_s].assign(domain.jmax + 1, phi_inlet[i_s]);
 
     // phi_b/c/d: MATLAB never assigns these past their initial zeros()
     // allocation (BC_e_phi/BC_n_phi/BC_s_phi are Neumann, applied by
@@ -297,14 +278,10 @@ BC VariableNonDim::getBC(const Domain &domain, const StateVar &stateVar, const L
     return bc;
 }
 
-IBM VariableNonDim::getIBM(const Domain &domain, int Np) const {
+IBM VariableNonDim::getIBM(const Domain &domain) const {
     IBM ibm;
     ibm.q = q; ibm.alpha = alpha; ibm.beta = beta;
-    ibm.alpha_phi = alpha_phi;
-    ibm.q_phi.assign(q_phi.begin(), q_phi.begin() + Np);
-    // ibm.beta_phi (per-species) is filled by main.cpp instead, after
-    // Variables::defineReactivity() has loaded A -- see IBM::beta_phi's
-    // comment for why this one can't happen here.
+    ibm.q_phi = q_phi; ibm.alpha_phi = alpha_phi; ibm.beta_phi = beta_phi;
     ibm.u_inside_psi = u_inside_psi;
     ibm.phi_inside_psi = phi_inside_psi;
     ibm.xc = lsCase.xc; ibm.yc = lsCase.yc; ibm.diamcyl = lsCase.diamcyl;
@@ -318,6 +295,9 @@ IBM VariableNonDim::getIBM(const Domain &domain, int Np) const {
     ibm.flag_u = Field2D(domain.imax, domain.jmax + 1);
     ibm.flag_v = Field2D(domain.imax + 1, domain.jmax);
 
+    // // beta_phi (MATLAB: beta_rand = ones(imax,jmax)*beta_phi) -- real now
+    // // that domain.imax/jmax come from computeCoordinates().
+    // ibm.beta_phi.assign(static_cast<size_t>(domain.imax) * static_cast<size_t>(domain.jmax), beta_phi);
     return ibm;
 }
 
@@ -345,13 +325,7 @@ LS VariableNonDim::getLS(const Domain &domain, const LSCase &lsCase) const {
         for (int j = 0; j < domain.jmax; ++j)
             ls.psiV(i, j) = bilinearInterp(domain.xp, domain.yp, ls.psi, domain.xv[i], domain.yv[j]);
 
-    // nx/ny: LS surface normals on the (xp,yp) scalar grid itself -- no
-    // grid-averaging needed first (unlike psiU/psiV above), since
-    // LSPointIdent.cpp's own scalar/pressure branch (UVP==1) reads
-    // ls.nx/ls.ny directly, the same way it reuses ls.psi directly.
-    LSNormals normals = computeLSNormals(ls.psi, domain);
-    ls.nx = normals.nx;
-    ls.ny = normals.ny;
+    // TODO: nx/ny need LSnormals() -- not ported yet.
     return ls;
 }
 
@@ -391,7 +365,7 @@ StateVar VariableNonDim::getStateVar(const Domain &domain, const LS &ls) const {
             ph(0, j) = (ls.psi(0, j) > 0.0) ? phi_inlet[s] : 0.0;
     }
     
-    state_var.phi_prev = state_var.phi;           // phi_prev = phi
+    state_var.phi_old = state_var.phi;           // phi_old = phi
     state_var.U_prev = state_var.U;
     state_var.V_prev = state_var.V;
     state_var.P_prev = state_var.P;
@@ -503,9 +477,9 @@ void Variables::defineReactivity(const Domain &domain, const std::string &aMatJs
     }
     json_object_put(root);
 
-    // Pd is a Variables member now (see its comment there) --
-    // LSVelocityExtrapolation needs it to undo this scaling for the
-    // species that drives the interface.
+    // Pd: per-species diffusivity-like normalization, hardcoded in
+    // MATLAB too (setUpVariablesNonDim.m:463) -- fixed at 3 species.
+    static const double Pd[3] = {9.3, 0.793, 1.91};
 
     // A = inv(Pd)*A: Pd is diagonal, so this just divides row i by Pd[i].
     std::vector<double> a(aRaw.size());
@@ -523,7 +497,7 @@ void Variables::defineReactivity(const Domain &domain, const std::string &aMatJs
         for (int j = 0; j < Np; ++j) m[i * Np + j] = (i == j ? 3.0 : 0.0) - 2.0 * l * a[i * Np + j];
 
     A = a;
-    inv_A = invert3x3(m); // used in ghost cell robin bc, q term calculation
+    inv_A = invert3x3(m);
 }
 
 void Variables::defineLSvariables(const Domain &domain) {
@@ -531,13 +505,11 @@ void Variables::defineLSvariables(const Domain &domain) {
     double min_dxp = domain.dxp.empty()
                          ? 0.0
                          : *std::min_element(domain.dxp.begin(), domain.dxp.end());
+    LSband = 10.0 * min_dxp;
+    nLSupdate = 10;
     dtLS = dt;
-    LSgamma = LSgamma_fac * min_dxp;   // MATLAB: 5 * min(dxp)
+    LSgamma = 5.0 * min_dxp;
     LSbeta = 3.0 * min_dxp;
     Pe_vel = Pe;
-    dtau = dtau_fac * min_dxp;         // MATLAB: fac = 0.5
-
-    // nLSupdate is NOT set here any more -- getVariables() takes it from
-    // config.json, and this method runs afterwards, so assigning it here
-    // would silently clobber the configured value.
+    dtau = 0.5 * min_dxp;  // fac = 0.5
 }

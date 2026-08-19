@@ -1,7 +1,7 @@
 #pragma once
 #include "../VariableNonDim.h"
 #include "../ControlVar.h"
-#include "../Utilities/DiffuFlux.h"
+#include "../Utilities/DiffFlux.h"
 #include "COEFFU.h"  // MomentumCoeffs
 
 // Runs the SIMPLE (and, if ControlVar.PISO==1, PISO) pressure-velocity

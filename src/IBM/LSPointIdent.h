@@ -24,30 +24,19 @@
 // per species.
 //
 // alpha/beta/q/BQ: that grid's own Robin-BC coefficients and
-// bilinear(0)/biquadratic(1) stencil choice -- callers pick these per
-// grid (LSIBMcoeffsUV()) or per species (LSIBMcoeffsPhi(), which is
-// where the per-species beta actually comes from -- this function
-// itself has no notion of species count, since each call is already
-// scoped to one grid/species via its own alpha/beta) before calling
-// here.
-// q is used to build rhs, A1_g, not really used and comptued for coeffPhi 
-// because q dependes on concentration, this will actually be computed in
-// quick iteration and update A1_g
-
+// bilinear(0)/biquadratic(1) stencil choice -- LSIBMcoeffs() picks
+// these per grid before calling here.
 // treshold: LSPointIdent.m's own numerical tolerance parameter
 // (IBM.treshold).
+// phi: species concentration fields (StateVar.phi) -- LSPointIdentnew.m
+// needs these (their count and values) for the P/scalar grid's
+// per-species Robin BC; unused by the current placeholder (see
+// LSPointIdent.cpp).
 //
-
-//
-// Classification (fluid/ghost/solid), ghost-cell coordinate extraction,
-// and the mirror-point stencil itself (LSmirPointsBQ(), called at the
-// end) are all real. LSmirPointsBQnew.m's separate P/scalar variant
-// isn't ported as its own function -- its one real behavioral
-// difference (the near-domain-edge beta=0 demotion safeguard) isn't
-// replicated here yet either; everything else about it is either
-// identical math or dead/unreachable code in one file or the other.
-//
-// computeA1g forwards straight to LSmirPointsBQ() -- see its own
-// comment for when to pass false.
+// Classification (fluid/ghost/solid) and the ghost-cell coordinate
+// extraction are real; the ghost-cell mirror-point stencil itself
+// (LSmirPointsBQ(), called at the end) is still a placeholder -- see
+// LSmirPointsBQ.h/.cpp. LSmirPointsBQnew.m's separate P/scalar variant
+// isn't ported either.
 IBMCoeff LSPointIdent(const Domain &domain, double alpha, double beta, double q, int BQ,
-                       const LS &ls, int UVP, double treshold, bool computeA1g = true);
+                       const LS &ls, int UVP, const std::vector<Field2D> &phi, double treshold);

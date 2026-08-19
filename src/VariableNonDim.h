@@ -45,8 +45,8 @@ struct Grid {
 
 // Mirrors the DOMAIN struct built by Coordinates.m -- grid-point
 // coordinates and spacings are real (see Utilities/Coordinates.h/.cpp);
-// everything array-sized downstream (BC boundary arrays, StateVar.U/V/P,
-// LS.psi) can now be sized correctly from imax/jmax.
+// everything array-sized downstream (BC boundary arrays, IBM.beta_phi,
+// StateVar.U/V/P, LS.psi) can now be sized correctly from imax/jmax.
 //
 // xu/yu/xv/yv are the staggered MAC grid axis vectors (u on vertical
 // faces, v on horizontal faces); xp/yp (== xv/yu) are the scalar
@@ -86,22 +86,6 @@ struct Domain {
     Field2D dV_u;  // shape (imax,   jmax+1) -- matches U
     Field2D dV_v;  // shape (imax+1, jmax)   -- matches V
     Field2D dV_p;  // shape (imax+1, jmax+1) -- matches P
-
-    // Phi/scalar-transport QUICK-scheme interpolation weights (Coordinates.m's
-    // g1c_*/g2c_* -- computed once via QuickInterp(), consumed by
-    // RhsPhiADRE.cpp's deferred-correction S_e/S_w/S_n/S_s terms). Each
-    // pair only varies along the axis its face is normal to (e/w vary with
-    // i, n/s vary with j) -- MATLAB stores them as full 2D arrays via an
-    // outer product with an all-ones vector, but since the other axis is a
-    // pure broadcast, this port keeps them 1D, same convention as
-    // CoEWu/CoNSu/etc above. "_p"/"_n" suffix is the flow direction
-    // (positive/negative), not P-grid/node -- matches MATLAB's own naming.
-    // Zero outside the interior range the QUICK stencil is valid for
-    // (needs 2 real neighbors on the upstream side).
-    std::vector<double> g1c_e_p, g2c_e_p, g1c_e_n, g2c_e_n;  // length imax+1, nonzero for i in [1,imax-2]
-    std::vector<double> g1c_w_p, g2c_w_p, g1c_w_n, g2c_w_n;  // length imax+1, nonzero for i in [2,imax-1]
-    std::vector<double> g1c_n_p, g2c_n_p, g1c_n_n, g2c_n_n;  // length jmax+1, nonzero for j in [1,jmax-2]
-    std::vector<double> g1c_s_p, g2c_s_p, g1c_s_n, g2c_s_n;  // length jmax+1, nonzero for j in [2,jmax-1]
 };
 
 // Mirrors the BC struct.
@@ -134,28 +118,10 @@ struct BC {
 struct IBM {
     // Robin-BC for velocity: -alpha * dphi/dn - beta * phi = q, no-slip, no-penetration condition
     double q = 0.0, alpha = 0.0, beta = 1.0;
-    // Robin-BC for scalar: -alpha_phi * dphi/dn - beta_phi(i_s) * phi =
-    // q_phi(i_s), same shape as velocity's. In MATLAB, alpha_phi and
-    // q_phi are one constant shared by every species (see
-    // SolveTransportADRE.m:47's update_A1g call, which passes IBM.q_phi
-    // with no species index) -- this port doesn't keep that restriction:
-    // q_phi is per-species here since nothing about the Robin BC itself
-    // requires species to share a value, only MATLAB's config happened
-    // to. alpha_phi stays a shared scalar (no config knob to vary it per
-    // species yet; add one the same way if that's ever needed).
-    //
-    // beta_phi is per-species too, populated from -diag(variables.A)
-    // right after Variables::defineReactivity() runs (see main.cpp) --
-    // NOT by getIBM(), which runs before A is loaded. MATLAB's own
-    // beta_phi is a dead single scalar (LSIBMcoeffs.m seeds an initial
-    // landa_g_k/A1_g with it that update_A1g immediately overwrites
-    // before first use, and its other consumer, Da/interfaceVelocityCoeff
-    // in setUpVariablesNonDim.m, is assigned and never read anywhere) --
-    // this field intentionally does NOT mirror that; it stores the real
-    // value instead.
-    double alpha_phi = -1.0;
-    std::vector<double> beta_phi;  // size Np, beta_phi[i_s] = -A[i_s*Np+i_s]
-    std::vector<double> q_phi;     // size Np, independent per species
+    // Robin-BC for scalar: -alpha_phi * dphi/dn - beta_phi * phi = q
+    double q_phi = 0.0, alpha_phi = -1.0;
+    double beta_phi = 0.0;
+    
     double xc = 0.0, yc = 0.0, diamcyl = 0.0;
     int nrgrainx = 1, nrgrainy = 1;
 
@@ -177,11 +143,11 @@ struct StateVar {
     // U, V, P: staggered MAC grid, flattened Field2D (index = i*ny + j).
     Field2D U, V, P;
 
-    // phi, phi_prev: MATLAB's (imax+1, jmax+1, Np) -- one Field2D
+    // phi, phi_old: MATLAB's (imax+1, jmax+1, Np) -- one Field2D
     // (imax+1 x jmax+1) per species, same "vector-of-per-species"
     // pattern as BC.phi_a, rather than trying to bolt a 3rd dimension
     // onto Field2D itself.
-    std::vector<Field2D> phi, phi_prev;
+    std::vector<Field2D> phi, phi_old;
 
     std::vector<double> P_cor_vec;
 
@@ -205,31 +171,9 @@ struct LS {
     Field2D psiU, psiV;
 
     // Level-set surface normals on the (xp,yp) scalar grid (nx = dpsi/dx,
-    // ny = dpsi/dy of the normalized gradient), from computeLSNormals()
-    // -- see VariableNonDim.cpp's getLS().
+    // ny = dpsi/dy of the normalized gradient). TODO: needs LSnormals()
+    // -- not ported yet, so these stay empty (nx.nx()==0) for now.
     Field2D nx, ny;
-
-    // ---- Filled by LSeqSolve() (SolveLS/LSeqSolve.h), stage 1 ----
-    // Interface extension velocity on the (xp,yp) grid: the local
-    // recession speed times the surface normal, so u = speed*nx,
-    // v = speed*ny. Nonzero only inside the narrow band |psi| < LSgamma;
-    // zero until LSeqSolve() runs, which in the frozen-geometry milestone
-    // is never. Consumed by solveHJEq() to advect psi.
-    Field2D u, v;
-
-    // MATLAB's LS.q_out and LS.beta_out are deliberately NOT ported.
-    // LSVelocityExtrapolation.m writes them, and LSPointIdentnew.m:236-240
-    // reads them back into q_G/beta_G to seed the scalar IBM coefficients
-    // -- but SolveTransportADRE.m throws that seed away before it is ever
-    // used: it computes its own q_G via calculate_qG (line 35, then again
-    // every QUICK iteration at line 131), builds beta_G inline from
-    // -diag(A) (lines 36-41), and update_A1g() (line 47) overwrites every
-    // IBM_coeffP field LSPointIdentnew had just produced on the first
-    // QUICK pass. beta_out is additionally just -diag(A), which already
-    // exists here as IBM::beta_phi (see main.cpp). Carrying them would
-    // only reproduce MATLAB's ordering coupling, where skipping LSeqSolve
-    // makes LSPointIdentnew fail with "Unrecognized field name q_out".
-
     int caseId = 0;
 };
 
@@ -241,6 +185,8 @@ struct LS {
 struct Variables {
     double D = 0.0, Re = 0.0, density = 0.0;
     bool dimensional = false;
+    double intVelCoeff = 0.0;
+    int intVelMethod = 2;
     double alpha_u = 0.7, alpha_v = 0.7, alpha_p = 1.0, alpha_q = 1.0;
     double dt = 0.05;  // dt_man
     double Pe = 0.0;
@@ -248,64 +194,30 @@ struct Variables {
     std::array<double, 3> phi_inlet{};
     std::array<double, 3> phi_init{};
     bool dissolution = true;
-
-    // Copied from ControlVar::verbose by main.cpp -- the solver modules
-    // take Variables but not ControlVar. Gates progress printing only.
-    bool verbose = true;
     int n_iter_ReLS = 4;
     std::string TimeSchemeLS = "RK3";
     std::string TimeSchemeRLS = "RK3";
 
     double dtau = 0.0; //used for the level-set reinitialization procedure.
 
-    // Dimensional reference scales, from setUpVariablesNonDim.m:405,457-458.
-    // Used by LSVelocityExtrapolation to turn a nondimensional molar flux
-    // into a physical interface recession speed.
-    double u_real = 0.12e-2;   // m/s
-    double c_real = 10.0;      // mol/m^3
-    double L_real = 0.5e-2;    // m
-    double molarVol = 36.9;    // cm^3/mol (calcite). NOTE the unit --
-                                // LSVelocityExtrapolation.m:139 writes the
-                                // literal 36.9e-6, i.e. this value
-                                // converted to m^3/mol.
-
-    // Pd: per-species diffusivity-like normalization, hardcoded in MATLAB
-    // too (setUpVariablesNonDim.m:463). defineReactivity() divides row i
-    // of A by Pd[i], so every use of A carries that scaling.
-    //
-    // Exposed here because LSVelocityExtrapolation has to undo it. The
-    // scaled A is right for the transport BC -- each species' equation is
-    // nondimensionalized by its own diffusivity -- but the interface
-    // recession speed needs the TRUE molar flux, which is
-    // diffusivity-independent. So that one term multiplies its species'
-    // Pd back in. MATLAB writes the undo as a bare `/1.261` literal
-    // (= 1/0.793 rounded); reading it from here instead keeps the two
-    // ends of the cancellation provably consistent.
-    std::array<double, 3> Pd{9.3, 0.793, 1.91};
-
-    // A: the (rescaled-by-Pd) Np x Np reaction-rate matrix,
+    // A: the (rescaled-by-Pd) Np x Np reaction-rate matrix, 
     // LSVelocityExtrapolation's biquadratic extrapolation scheme. Both
     // flattened row-major (index = i*Np + j) -- filled by defineReactivity()
     std::vector<double> A;
     std::vector<double> inv_A;
 
+    double LSband = 0.05;
     int nLSupdate = 10;
     double dtLS =  dt;
     double LSgamma = 0.025;
     double LSbeta = 0.015;
     double Pe_vel = Pe;
 
-    // Grid-spacing multipliers behind dtau and LSgamma. Set from
-    // config.json by getVariables(); defineLSvariables() needs them
-    // because it is a Variables method and never sees VariableNonDim.
-    double dtau_fac = 0.5;
-    double LSgamma_fac = 5.0;
-
 
     // Fills in A/inv_A . loaded from A_0.2.json. inv_A = inv(3*I - 2*l*A), used by
     void defineReactivity(const Domain &domain, const std::string &aMatJsonPath);
 
-    // sets the Variables- side level-set parameters (nLSupdate, dtLS, LSgamma,
+    // sets the Variables- side level-set parameters (LSband, nLSupdate, dtLS, LSgamma,
     // LSbeta, Pe_vel, also dtau, dimesionless dt) 
     void defineLSvariables(const Domain &domain);
 };
@@ -363,27 +275,17 @@ public:
     double alpha = 0.0;
     double beta = 1.0;
 
-    // For the scalar: q_phi=0, alpha_phi=-1 -- the per-species reactive-
-    // flux coefficient the transport solve's ghost-cell BC actually uses
-    // is beta_G(:,i_s) = -diag(variables.A)(i_s), from the reaction-rate
-    // matrix (see LSIBMcoeffsPhi()). MATLAB also has a beta_phi=178 here,
-    // but it's dead in the active model: LSIBMcoeffs.m only uses it to
-    // seed an initial landa_g_k/A1_g that update_A1g immediately
-    // overwrites before first use, and its other consumer (Da/
-    // interfaceVelocityCoeff in setUpVariablesNonDim.m) is assigned and
-    // never read anywhere. Confirmed by tracing every consumer; not
-    // ported here.
+    // For the scalar: q_phi=0, alpha_phi=-1, beta_phi=178 works out to
+    // dphi/dn = 178*phi -- a reactive-flux condition (diffusive flux into
+    // the surface proportional to the local concentration), with
+    // beta_phi=178 being the reaction-rate constant K.
     bool uniMineral = true;   // hardcoded true in the MATLAB source too
                                // (the bi-mineral else-branch is unreachable
                                // dead code there); not translated here.
     int BQp = 0;
-    // Per-species, unlike MATLAB's own shared scalar (see IBM::q_phi's
-    // comment) -- this project isn't constrained to a literal MATLAB
-    // mirror here, and ibm.q_phi is already per-species internally, so
-    // config.json can set each species independently instead of only
-    // ever broadcasting one shared value.
-    std::array<double, 3> q_phi{};
+    double q_phi = 0.0;
     double alpha_phi = -1.0;
+    double beta_phi = 178.0; // this is being used to check dt and define intefacial velocity, not sure how it really used now
     bool dissolution = true;
     int BC_e_phi = 3, BC_w_phi = 1, BC_n_phi = 3, BC_s_phi = 3;  // domain-edge BCs for phi
 
@@ -394,35 +296,10 @@ public:
     // ---- Grid (feeds getDomain()) ----
     Grid grid;
 
-    // ---- Level-set solver knobs (feed getVariables() and
-    // Variables::defineLSvariables()) ----
-    // All hardcoded in setUpVariablesNonDim.m:422-429,527-531. Exposed
-    // here because they are genuine tuning parameters, not physics.
-    //
-    // CAUTION -- n_iter_ReLS and dtau_fac are NOT independent. The
-    // reinitialization equation propagates outward from the interface at
-    // unit pseudo-time speed, so what matters is their product:
-    //
-    //     repair radius (in cells) = n_iter_ReLS * dtau_fac = 4 * 0.5 = 2
-    //
-    // Two cells is what the defaults buy, and it is chosen to cover the
-    // only things that read the distance property -- r_g = abs(psi) at
-    // ghost cells (1 cell) and computeLSNormals' central difference
-    // (1 cell) -- with 2x margin, then stop. Halving dtau_fac without
-    // doubling n_iter_ReLS silently halves the repair radius; raising
-    // n_iter_ReLS buys reach at the cost of MORE interface drift, since
-    // the discrete scheme does not exactly preserve the zero contour.
-    // Change them as a pair, and watch the product.
-    int n_iter_ReLS = 4;                  // reinitialization sweeps per LS step
-    std::string TimeSchemeLS = "RK3";     // advection      (RK1 | RK2 | RK3)
-    std::string TimeSchemeRLS = "RK3";    // reinitialization
-    double dtau_fac = 0.5;                // dtau   = dtau_fac   * min(dxp)
-    double LSgamma_fac = 5.0;             // LSgamma = LSgamma_fac * min(dxp)
-    int nLSupdate = 10;                   // transport sub-steps per LS update
-
-    // dt_man lives on ControlVar now -- it is a run-control knob, not a
-    // physical property. main.cpp copies ControlVar::dt_man into
-    // Variables::dt, which is what the solver modules read.
+    // ---- Time step (dt_man is what's actually used; dt_diff/dt_cour
+    // depend on DOMAIN and stay in the roadmap comment in
+    // VariableNonDim.cpp) ----
+    double dt_man = 0.05;
 
     // ---- Derived (computed by computeDerivedGeometry(), not from JSON) ----
     LSCase lsCase;
@@ -462,12 +339,9 @@ public:
     Variables getVariables(const Domain &domain) const;
 
     // Real for q/alpha/beta/q_phi/alpha_phi/phi_inside_*/xc/yc/diamcyl/
-    // nrgrainx/nrgrainy/BQ*/treshold. Np sizes the copy from this class's
-    // fixed-3 q_phi array into ibm.q_phi's per-species vector (q_phi
-    // doesn't depend on A, unlike beta_phi, so this doesn't need to wait
-    // for Variables::defineReactivity() the way beta_phi does -- see
-    // IBM::beta_phi's comment).
-    IBM getIBM(const Domain &domain, int Np) const;
+    // nrgrainx/nrgrainy/BQ*/treshold; beta_phi (beta_rand array) is TODO
+    // (needs DOMAIN for sizing).
+    IBM getIBM(const Domain &domain) const;
 
     // Real now: sizes AND fills U/V/P/phi with their masked initial
     // values (uniform inflow / phi_init masked to the fluid region via
@@ -475,10 +349,10 @@ public:
     // and BEFORE getBC() (which reads this).
     StateVar getStateVar(const Domain &domain, const LS &ls) const;
 
-    // psi is real for case 1/grain (see SolveLS/LSInitialize.cpp); nx/ny
-    // from computeLSNormals() (SolveLS/LSnormals.cpp). Takes lsCase
-    // explicitly (even though it's also a member) for consistency with
-    // every other getX() method here taking its dependencies as
+    // psi is real now for case 1/grain (see SolveLS/LSInitialize.cpp);
+    // nx/ny are still TODO (needs LSnormals(), not ported yet). Takes
+    // lsCase explicitly (even though it's also a member) for consistency
+    // with every other getX() method here taking its dependencies as
     // parameters rather than reading `this->` state.
     LS getLS(const Domain &domain, const LSCase &lsCase) const;
 

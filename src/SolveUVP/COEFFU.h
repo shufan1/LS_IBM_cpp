@@ -1,7 +1,7 @@
 #pragma once
 #include <petsc.h>
 #include "../VariableNonDim.h"
-#include "../Utilities/DiffuFlux.h"
+#include "../Utilities/DiffFlux.h"
 #include "../Utilities/ConvFlux.h"
 #include "../IBM/IBMCoeff.h"
 

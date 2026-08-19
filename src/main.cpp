@@ -17,12 +17,10 @@
 #include "ControlVar.h"
 #include "VariableNonDim.h"
 #include "Utilities/Coordinates.h"
-#include "Utilities/DiffuFlux.h"
-#include "Utilities/Debug.h"
+#include "Utilities/DiffFlux.h"
 #include "Utilities/Timer.h"
 #include "Models/flowSStransportUS.h"
 #include "IBM/LSIBMcoeffs.h"
-#include "SolveLS/LSeqSolve.h"
 
 int main(int argc, char **argv) {
     PetscInitialize(&argc, &argv, nullptr, nullptr);
@@ -46,27 +44,8 @@ int main(int argc, char **argv) {
     //    - moved ahead of step 2 (vs. RunADRE.m's call order) so
     //      output_folder exists before we need it to save coordinates.json
     ControlVar controlVar(configPath);
-
-    // controlVar.debug=false (default): only the normal per-savedat
-    // snapshot, to output_folder as configured -- no per-ADRE-substep
-    // dumps at all (outputAdreDir stays "", which flowSStransportUS.cpp/
-    // SolveTransportADRE.cpp already treat as "skip"). controlVar.debug
-    // =true: ALSO the per-ADRE-substep dumps (to output_ADRE), and the
-    // normal per-savedat snapshot redirects to output_folder with
-    // "_debug" appended, so a long diagnostic run's saves never mix
-    // with/overwrite a normal run's output_folder.
-    controlVar.debug = false;
-    std::string outputFolderName = controlVar.output_folder;
-    if (!outputFolderName.empty() && outputFolderName.back() == '/') outputFolderName.pop_back();
-    if (controlVar.debug) outputFolderName += "_debug";
-    std::string outputDir = projectDir + "/" + outputFolderName;
+    std::string outputDir = projectDir + "/" + controlVar.output_folder;
     std::filesystem::create_directories(outputDir);
-
-    std::string outputAdreDir;
-    if (controlVar.debug) {
-        outputAdreDir = projectDir + "/output_ADRE";
-        std::filesystem::create_directories(outputAdreDir);
-    }
 
     // 2. Load variables + coordinates
     //    - mirrors setUpVariablesNonDim.m's 7 return values: LSCase is a
@@ -84,23 +63,13 @@ int main(int argc, char **argv) {
     // it as an identifier silently preprocesses into a numeric literal.
     Domain domain = varSetup.getDomain();
     Variables VARIABLES = varSetup.getVariables(domain);
-    IBM ibm = varSetup.getIBM(domain, VARIABLES.Np);
+    IBM ibm = varSetup.getIBM(domain);
     LS ls = varSetup.getLS(domain, lsCase);                 // masks (psiU/psiV/psi)
     StateVar stateVar = varSetup.getStateVar(domain, ls);   // needs the masks
     BC bc = varSetup.getBC(domain, stateVar, ls);
-    // dt_man is a run-control knob, so it lives on ControlVar; the solver
-    // modules all read Variables::dt. Must happen BEFORE
-    // defineLSvariables(), which copies dt into dtLS.
-    VARIABLES.dt = controlVar.dt_man;
-    VARIABLES.verbose = controlVar.verbose;
-
     VARIABLES.defineReactivity(domain, "A_0.2.json");
     VARIABLES.defineLSvariables(domain);
-
-    // ibm.beta_phi, linear coefficient for the reactive robin bc. filled with diagonal entries of A
-    ibm.beta_phi.resize(VARIABLES.Np);
-    for (int i_s = 0; i_s < VARIABLES.Np; ++i_s) ibm.beta_phi[i_s] = -VARIABLES.A[i_s * VARIABLES.Np + i_s];
-
+    
 
 
     // Grid is identical on every rank until domain decomposition exists --
@@ -110,7 +79,7 @@ int main(int argc, char **argv) {
         saveCoordinatesJson(domain, "coordinates.json");
     }
 
-    if (controlVar.verbose && rank == 0) {
+    if (rank == 0) {
         printf("LS_IBM solver -- no modules ported yet\n");
         printf("  lsCase.caseId=%d xc=%g yc=%g diamcyl=%g\n",
                lsCase.caseId, lsCase.xc, lsCase.yc, lsCase.diamcyl);
@@ -121,17 +90,9 @@ int main(int argc, char **argv) {
                VARIABLES.Re, VARIABLES.Pe, VARIABLES.D, VARIABLES.dt, VARIABLES.Np);
         printf("  bc: BC_e_u=%d BC_w_u=%d P0_e=%g\n", bc.BC_e_u, bc.BC_w_u, bc.P0_e);
         printf("  ibm: q=%g alpha=%g beta=%g\n", ibm.q, ibm.alpha, ibm.beta);
-        printf("  ibm: alpha_phi=%g q_phi=[", ibm.alpha_phi);
-        for (size_t i_s = 0; i_s < ibm.q_phi.size(); ++i_s)
-            printf("%s%g", i_s ? ", " : "", ibm.q_phi[i_s]);
-        printf("] beta_phi=[");
-        for (size_t i_s = 0; i_s < ibm.beta_phi.size(); ++i_s)
-            printf("%s%g", i_s ? ", " : "", ibm.beta_phi[i_s]);
-        printf("]\n");
         printf("  stateVar: U.size()=%zu V.size()=%zu P.size()=%zu\n",
                stateVar.U.data().size(), stateVar.V.data().size(), stateVar.P.data().size());
         printf("  ls: caseId=%d psi.size()=%zu\n", ls.caseId, ls.psi.data().size());
-       
         // DIAGNOSTIC (temporary): raw P-grid psi at the two cells MATLAB
         // reports LS.psi(195,62)=1.5784e-04 for -- compare directly to see
         // whether the level-set field itself already disagrees here, vs.
@@ -152,15 +113,31 @@ int main(int argc, char **argv) {
     // 3. Compute diffusive flux setup
     //    - mirrors getDiffFlux(VARIABLES, DOMAIN, BC) -- solution-independent
     //      (mesh + Re/D only), so computed once here, not per iteration.
-    Flux diffu_flux = computeDiffFlux(domain, VARIABLES, bc);
-    if (controlVar.verbose && rank == 0) {
+    Flux flux = computeDiffFlux(domain, VARIABLES, bc);
+    if (rank == 0) {
         printf("  flux: Diffu_U.De.nx()=%d Diffu_U.De.ny()=%d Diffu_V.De.nx()=%d Diffu_V.De.ny()=%d\n",
-               diffu_flux.Diffu_U.De.nx(), diffu_flux.Diffu_U.De.ny(), diffu_flux.Diffu_V.De.nx(), diffu_flux.Diffu_V.De.ny());
+               flux.Diffu_U.De.nx(), flux.Diffu_U.De.ny(), flux.Diffu_V.De.nx(), flux.Diffu_V.De.ny());
     }
 
-    // 4. Run model 
+    // 4. Run model -- inlined directly here rather than a separate
+    //    Models/modelSimulation.cpp file. Mirrors
+    //    Models/modelSimulation_no_LS.m, model==4 branch only (models
+    //    1-3 exist in MATLAB but aren't used in practice, so not
+    //    translated). LS.psi is frozen (geometry doesn't move yet),
+    //    matching RunADRE_no_LS.m / Milestone 1's scope.
+    //
+    //    Only the driving structure (prints, CurrentStateVar save) is
+    //    real for now -- the actual per-iteration solve
+    //    (LSVelocityExtrapolation, LSIBMcoeffs, flowSStransportUS) isn't
+    //    ported yet, so StateVar/LS never actually change across
+    //    iterations until those land.
+
+    // Only flow_steady=true && transport_steady=false ("model 4" in
+    // MATLAB's numbering) is translated -- bail out on every rank
+    // together, not just rank 0, so a differently-configured run doesn't
+    // leave other ranks waiting on one that already exited.
     if (controlVar.flow_steady && !controlVar.transport_steady) {
-        if (controlVar.verbose && rank == 0) {
+        if (rank == 0) {
         printf("=========================================================================== \n");
         printf("       Model 4 : Simulation starts with flow steady state and transport and LS being unsteady:  (LS frozen -- no_LS variant)\n");
         printf("=========================================================================== \n");
@@ -183,68 +160,42 @@ int main(int argc, char **argv) {
     // uses inside the loop below, so it can be compared directly against
     // MATLAB's own pre-modelSimulation_no_LS() snapshot -- see
     // debug_compare/compare_initial_state.m.
-    if (controlVar.verbose && rank == 0) {
+    if (rank == 0) {
         std::string initPath = "/home/groups/ibattiat/sxia/LS_IBM/LS_IBM_sxia/debug_compare/cpp_initial_state.json";
         varSetup.saveCurrentStateJson(stateVar, ls, controlVar.time, initPath);
         printf("  initial state saved to %s\n", initPath.c_str());
     }
 
-    //  save the initial state
-    if (controlVar.verbose && rank == 0) {
-        std::string initOutputPath = outputDir + "/dataRDE0dt.json";
-        varSetup.saveCurrentStateJson(stateVar, ls, controlVar.time, initOutputPath);
-        printf("output saved to %s \n", initOutputPath.c_str());
-    }
-
     double endTime = controlVar.time + controlVar.noLStime * VARIABLES.dt;
     int iTime = controlVar.iStart;
-
-    // "total_runtime": the whole geometry loop, excluding setup -- matches
-    // what RunADRE_no_LS.m:96-101 wraps around its modelSimulation call.
-    // Not a ScopedTimer: that would record when it leaves main()'s scope,
-    // which is after printSummary() has already run.
-    const auto tTotalStart = std::chrono::steady_clock::now();
 
     while (controlVar.time < endTime) {
         controlVar.time += VARIABLES.dt;
         iTime += 1;
-        controlVar.iTime = iTime;
 
-        if (controlVar.verbose && rank == 0) {
+        if (rank == 0) {
             printf("=========================================================================== \n");
             printf("                     updating geometry at time %d = %8.6f / %8.6f             \n",
                    iTime,controlVar.time, endTime);
             printf("=========================================================================== \n");
         }
-        
-        // update levelset -- skipped entirely if controlVar.freezeLS, the
-        // Milestone-1/no_LS frozen-geometry variant (matches
-        // modelSimulation_no_LS.m never calling solveHJEq/
-        // LSreinitialization; ls.psi stays exactly what getLS() set once
-        // at startup).
-        if (!controlVar.freezeLS) LSeqSolve(ls, stateVar, domain, VARIABLES);
 
-        // update ghost cell related coefficient
-        // IBM coefficient for U and V: use their respective grids. get both lambda and A1_g
-        // Timed as one block under MATLAB's own "ibm_coeffs" category
-        // (modelSimulation.m:51-54), which wraps the single LSIBMcoeffs
-        // call covering U, V and the scalar alike.
-        std::vector<IBMCoeff> ibmCoeff;
-        std::vector<IBMCoeff> ibmCoeffPhi;
-        {
-            ScopedTimer t("ibm_coeffs");
-            ibmCoeff = LSIBMcoeffsUV(ibm, domain, ls);
-            // build IBMcoeff for each species, only compute lambda of mirror point neighbors,
-            // ghost cell rhs A1_g not computed
-            ibmCoeffPhi = LSIBMcoeffsPhi(ibm, domain, ls, VARIABLES.Np);
-        }
+        // ---- LEVEL SET EQUATION (FROZEN) ----
+        // TODO: LSVelocityExtrapolation(variables, stateVar, domain, ls)
+        // -- not ported yet; populates LS.u/LS.v/LS.q_out/LS.beta_out
+        // (the latter two are what the P/scalar grid would need for a
+        // real per-species Robin BC -- LSPointIdent() is still a
+        // placeholder either way, see IBM/LSPointIdent.h).
+        //
+        // One call, both grids at once, matching LSIBMcoeffs.m -- index
+        // 0=U, 1=V. No P slot -- see IBM/LSIBMcoeffs.h for why P's own
+        // IBM_coeffP is never computed at all.
+        std::vector<IBMCoeff> ibmCoeff = LSIBMcoeffs(ibm, domain, ls, stateVar.phi);
         const IBMCoeff &ibmCoeffU = ibmCoeff[0];
         const IBMCoeff &ibmCoeffV = ibmCoeff[1];
         if (rank == 0) {
-            printf("  ibmCoeff numg: U=%d V=%d phi=%d\n", ibmCoeffU.numg, ibmCoeffV.numg,
-                   ibmCoeffPhi.empty() ? 0 : ibmCoeffPhi[0].numg);
+            printf("  ibmCoeff numg: U=%d V=%d\n", ibmCoeffU.numg, ibmCoeffV.numg);
         }
-
         // DIAGNOSTIC (temporary): does any U ghost cell's own bilinear
         // stencil corner (I1..I4) land on a non-fluid cell (flag!=0 --
         // itself a ghost or solid cell, not a directly-known value)? Ported
@@ -252,7 +203,7 @@ int main(int argc, char **argv) {
         // which -- in both languages -- never checks the corner's flag at
         // all, so this can happen; checking whether it actually does here,
         // and where, for this geometry.
-        if (debug::ibm_stencil && rank == 0) {
+        if (rank == 0) {
             int nBad = 0;
             for (int k = 0; k < ibmCoeffU.numg; ++k) {
                 int corners[4][2] = {{ibmCoeffU.I1[k], ibmCoeffU.J1[k]},
@@ -273,11 +224,12 @@ int main(int argc, char **argv) {
             // DIAGNOSTIC (temporary): full stencil dump for specific U
             // ghost cells requested by (I_g,J_g) -- ghost cell location,
             // its 4 bilinear stencil corners, their lambda_g_k weights, and
-            const int nWanted = 5;
-            int wanted[nWanted][2] = {{193, 62}, {207, 62}, {193, 139}, {207, 139}, {189, 63}};
-            bool found[nWanted] = {false, false, false, false, false};
+            // A1_g, so this can be compared directly against MATLAB's own
+            // IBM_coeffU fields for the same cells.
+            int wanted[][2] = {{194, 61}, {195, 61}};
+            bool found[2] = {false, false};
             for (int k = 0; k < ibmCoeffU.numg; ++k) {
-                for (int w = 0; w < nWanted; ++w) {
+                for (int w = 0; w < 2; ++w) {
                     if (ibmCoeffU.I_g[k] == wanted[w][0] && ibmCoeffU.J_g[k] == wanted[w][1]) {
                         found[w] = true;
                         printf("  U ghost k=%d (I_g=%d,J_g=%d): I1..I4=(%d,%d) (%d,%d) (%d,%d) (%d,%d) "
@@ -294,7 +246,7 @@ int main(int argc, char **argv) {
             // has (0=fluid, 1=ghost, 2=solid), plus its 4 orthogonal
             // neighbors' flags, to see what our classification really did
             // there vs. what was expected.
-            for (int w = 0; w < nWanted; ++w) {
+            for (int w = 0; w < 2; ++w) {
                 if (found[w]) continue;
                 int i = wanted[w][0], j = wanted[w][1];
                 printf("  U (%d,%d) is NOT a ghost cell -- flag=%.0f, neighbor flags "
@@ -315,8 +267,8 @@ int main(int argc, char **argv) {
         controlVar.noTime = VARIABLES.nLSupdate;
 
         VARIABLES.dt = VARIABLES.dt / VARIABLES.nLSupdate;
-        flowSStransportUS(stateVar, controlVar, domain, VARIABLES, ibm, ibmCoeffU, ibmCoeffV,
-                           ibmCoeffPhi, bc, ls, diffu_flux, varSetup, outputAdreDir);
+        flowSStransportUS(stateVar, controlVar, domain, VARIABLES, ibm, ibmCoeffU, ibmCoeffV, bc,
+                           ls, flux);
         VARIABLES.dt = VARIABLES.dt * VARIABLES.nLSupdate;
 
         // ----  save current state ----
@@ -331,10 +283,6 @@ int main(int argc, char **argv) {
         // break`) -- meaningless until the flow solve actually populates
         // StateVar.U.
     }
-
-    Timer::record("total_runtime",
-                  std::chrono::duration<double>(std::chrono::steady_clock::now() - tTotalStart)
-                      .count());
 
     // Mirrors RunADRE.m's TIMING SUMMARY block + timer_results.mat save --
     // see Utilities/Timer.h. Rank 0 only, same as every other summary/save.

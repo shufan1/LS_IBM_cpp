@@ -37,14 +37,6 @@ std::vector<double> addScalar(const std::vector<double> &x, double s) {
     return y;
 }
 
-// Mirrors Utilities/QuickInterp.m: the two 2nd-order QUICK interpolation
-// weights for a face at x, given the nearest upstream node xU, the next
-// upstream node xUU, and the downstream node xD.
-void quickInterp(double x, double xU, double xUU, double xD, double &g1, double &g2) {
-    g1 = ((x - xU) * (x - xUU)) / ((xD - xU) * (xD - xUU));
-    g2 = ((x - xU) * (xD - x)) / ((xU - xUU) * (xD - xUU));
-}
-
 }  // namespace
 
 Domain computeCoordinates(double lx, double ly, double diamcyl, const Grid &grid) {
@@ -249,59 +241,6 @@ Domain computeCoordinates(double lx, double ly, double diamcyl, const Grid &grid
         for (int i = 0; i <= imax; ++i)
             for (int j = 0; j <= jmax; ++j)
                 domain.dV_p(i, j) = Ap[i] * Bp[j];
-    }
-
-    // Phi/scalar-transport QUICK weights (Coordinates.m's "Transport"
-    // section, g1c_*/g2c_*) -- each face's 3-point upstream-biased
-    // stencil, positive- and negative-flow variants. East/west vary
-    // along i (a P-cell's east face sits at xu[i], west face at
-    // xu[i-1]); north/south vary along j the same way with yv/yp.
-    // West/south's formula is exactly east/north's evaluated one index
-    // lower (a cell's west face IS its west neighbor's east face) --
-    // kept as separate loops rather than derived from each other, to
-    // stay a direct, checkable translation of Coordinates.m.
-    domain.g1c_e_p.assign(imax + 1, 0.0);
-    domain.g2c_e_p.assign(imax + 1, 0.0);
-    domain.g1c_e_n.assign(imax + 1, 0.0);
-    domain.g2c_e_n.assign(imax + 1, 0.0);
-    for (int i = 1; i <= imax - 2; ++i) {
-        quickInterp(domain.xu[i], domain.xp[i], domain.xp[i - 1], domain.xp[i + 1], domain.g1c_e_p[i],
-                    domain.g2c_e_p[i]);
-        quickInterp(domain.xu[i], domain.xp[i + 1], domain.xp[i + 2], domain.xp[i], domain.g1c_e_n[i],
-                    domain.g2c_e_n[i]);
-    }
-
-    domain.g1c_w_p.assign(imax + 1, 0.0);
-    domain.g2c_w_p.assign(imax + 1, 0.0);
-    domain.g1c_w_n.assign(imax + 1, 0.0);
-    domain.g2c_w_n.assign(imax + 1, 0.0);
-    for (int i = 2; i <= imax - 1; ++i) {
-        quickInterp(domain.xu[i - 1], domain.xp[i - 1], domain.xp[i - 2], domain.xp[i], domain.g1c_w_p[i],
-                    domain.g2c_w_p[i]);
-        quickInterp(domain.xu[i - 1], domain.xp[i], domain.xp[i + 1], domain.xp[i - 1], domain.g1c_w_n[i],
-                    domain.g2c_w_n[i]);
-    }
-
-    domain.g1c_n_p.assign(jmax + 1, 0.0);
-    domain.g2c_n_p.assign(jmax + 1, 0.0);
-    domain.g1c_n_n.assign(jmax + 1, 0.0);
-    domain.g2c_n_n.assign(jmax + 1, 0.0);
-    for (int j = 1; j <= jmax - 2; ++j) {
-        quickInterp(domain.yv[j], domain.yp[j], domain.yp[j - 1], domain.yp[j + 1], domain.g1c_n_p[j],
-                    domain.g2c_n_p[j]);
-        quickInterp(domain.yv[j], domain.yp[j + 1], domain.yp[j + 2], domain.yp[j], domain.g1c_n_n[j],
-                    domain.g2c_n_n[j]);
-    }
-
-    domain.g1c_s_p.assign(jmax + 1, 0.0);
-    domain.g2c_s_p.assign(jmax + 1, 0.0);
-    domain.g1c_s_n.assign(jmax + 1, 0.0);
-    domain.g2c_s_n.assign(jmax + 1, 0.0);
-    for (int j = 2; j <= jmax - 1; ++j) {
-        quickInterp(domain.yv[j - 1], domain.yp[j - 1], domain.yp[j - 2], domain.yp[j], domain.g1c_s_p[j],
-                    domain.g2c_s_p[j]);
-        quickInterp(domain.yv[j - 1], domain.yp[j], domain.yp[j + 1], domain.yp[j - 1], domain.g1c_s_n[j],
-                    domain.g2c_s_n[j]);
     }
 
     return domain;

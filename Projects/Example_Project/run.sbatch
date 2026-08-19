@@ -9,12 +9,7 @@
 #SBATCH -e sherlock_log/run.%j.err
 
 set -euo pipefail
-# Slurm copies a submitted batch script into a job-specific spool
-# directory (/var/spool/slurmd/<jobid>/slurm_script) and runs it from
-# there, so ${BASH_SOURCE[0]} (which works fine in run.sh, executed in
-# place) resolves to that spool path here instead -- use
-# $SLURM_SUBMIT_DIR (the directory `sbatch` was invoked from) instead.
-cd "$SLURM_SUBMIT_DIR"
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
 # Guard against stale Slurm env vars leaking in from an outer interactive
 # allocation (e.g. sh_dev) that don't match this job's own --cpus-per-task

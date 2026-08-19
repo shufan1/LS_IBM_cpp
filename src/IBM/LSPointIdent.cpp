@@ -28,7 +28,8 @@ Field2D psiOnV(const Field2D &psi, int imax, int jmax) {
 }  // namespace
 
 IBMCoeff LSPointIdent(const Domain &domain, double alpha, double beta, double q, int BQ,
-                       const LS &ls, int UVP, double /*treshold*/, bool computeA1g) {
+                       const LS &ls, int UVP, const std::vector<Field2D> & /*phi*/,
+                       double /*treshold*/) {
     const int imax = domain.imax;
     const int jmax = domain.jmax;
 
@@ -123,15 +124,8 @@ IBMCoeff LSPointIdent(const Domain &domain, double alpha, double beta, double q,
 
     // ---- Ghost-cell mirror-point stencil. Fills ibm_coeff.I_m/
     // J_m, I1..I6/J1..J6, lambda_g_1..6, A1_g in place, reading back the
-    // I_g/J_g just collected above. The near-domain-edge safeguard
-    // (LSmirPointsBQnew.m's own, see LSmirPointsBQ.h) only ever applies
-    // to the P/scalar grid (UVP==1) in MATLAB -- x_0 mirrors
-    // LSPointIdent.m's own `else: x_0=dx` branch (LS.case==3||4's
-    // DOMAIN.x_0 alternative isn't ported, matching every other
-    // case-3/4 omission in this project). ----
-    bool applyEdgeSafeguard = (UVP == 1);
-    LSmirPointsBQ(x, y, alpha, beta, q, X_g, Y_g, BQ, dx, psi, nx, ny, ibm_coeff, computeA1g,
-                  applyEdgeSafeguard, /*x_0=*/dx, /*lx=*/domain.lx);
+    // I_g/J_g just collected above. ----
+    LSmirPointsBQ(x, y, alpha, beta, q, X_g, Y_g, BQ, dx, psi, nx, ny, ibm_coeff);
 
     return ibm_coeff;
 }

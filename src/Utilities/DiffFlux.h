@@ -39,9 +39,11 @@ struct DiffFluxCoeffs {
     std::vector<double> D1_a, D2_a;
 };
 
-
+// Mirrors getDiffFlux.m: bundles the three DiffFluxCoeffs (one per
+// equation). Diffu_U is real; Diffu_V/Diffu_P are default-constructed
+// (all-empty) until computeDiffFluxV()/computeDiffFluxPhi() exist.
 struct Flux {
-    DiffFluxCoeffs Diffu_U, Diffu_V, Diffu_Phi;
+    DiffFluxCoeffs Diffu_U, Diffu_V, Diffu_P;
 };
 
 // U-momentum diffusive coefficients (DiffFlux.m's flag==1 branch).
@@ -63,22 +65,22 @@ struct Flux {
 // original MATLAB, so De stays zero there even in that case.
 DiffFluxCoeffs computeDiffFluxU(const Domain &domain, const Variables &variables, const BC &bc);
 
-// V-momentum (DiffFlux.m's flag==-1 branch). Same structure as
+// TODO: V-momentum (DiffFlux.m's flag==-1 branch). Same structure as
 // computeDiffFluxU with x/y roles swapped -- De/Dw/Dn/Ds sized
 // (imax+1, jmax) instead of (imax, jmax+1), and the boundary-exclusion
 // reasoning mirrors accordingly (V's north/south walls are literal
 // domain-boundary Dirichlet rows needing no interior stencil, while its
-// east/west columns are the ones borrowing P's padded axis).
+// east/west columns are the ones borrowing P's padded axis). Not
+// ported yet.
 DiffFluxCoeffs computeDiffFluxV(const Domain &domain, const Variables &variables, const BC &bc);
 
-// Scalar transport (DiffFlux.m's flag==0 branch). Like computeDiffFluxU
-// but using D=1/Pe instead of Re, sized (imax+1, jmax+1), plus the real
-// D1_a/D2_a west-boundary correction (A0_p_p deliberately NOT computed
-// -- see DiffFluxCoeffs's comment). One shared diffusivity for every
-// species (variables.D), matching IBM.alpha_phi/q_phi's own
-// shared-across-species convention -- unlike beta_phi, this genuinely
-// isn't per-species here.
+// TODO: scalar transport (DiffFlux.m's flag==0 branch). Like
+// computeDiffFluxU but using D=1/Pe instead of Re, sized
+// (imax+1, jmax+1), plus the real D1_a/D2_a west-boundary correction
+// (A0_p_p deliberately NOT computed -- see DiffFluxCoeffs's comment).
+// Not ported yet.
 DiffFluxCoeffs computeDiffFluxPhi(const Domain &domain, const Variables &variables, const BC &bc);
 
-// Mirrors getDiffFlux.m: computes all three at once.
+// Mirrors getDiffFlux.m: computes all three at once. Diffu_V/Diffu_P
+// will be all-empty until the two TODOs above are implemented.
 Flux computeDiffFlux(const Domain &domain, const Variables &variables, const BC &bc);

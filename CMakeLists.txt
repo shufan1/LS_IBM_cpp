@@ -35,32 +35,6 @@ add_executable(ksp_smoketest src/ksp_smoketest.cpp)
 target_include_directories(ksp_smoketest PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(ksp_smoketest PRIVATE MPI::MPI_CXX PkgConfig::PETSC)
 
-# Isolated unit test for LSeqSolve -- given the same (psi, phi) input as
-# debug_compare/test_LSeqSolve.m (a JSON file, not a long simulation
-# run), does this produce the same output? See test_LSeqSolve.cpp's own
-# header comment. Needs everything LSeqSolve.cpp's own call chain
-# touches, same list as ls_ibm below minus the flow/transport/IBM
-# modules this test never calls (VariableNonDim.cpp still references
-# LSInitialize.cpp's computeLSInitialize() inside getLS(), even though
-# this test doesn't call getLS() -- the symbol still needs linking).
-add_executable(test_ls_eq_solve
-    src/test_LSeqSolve.cpp
-    src/VariableNonDim.cpp
-    src/Utilities/Coordinates.cpp
-    src/Utilities/Interp.cpp
-    src/Utilities/Timer.cpp
-    src/SolveLS/LSInitialize.cpp
-    src/SolveLS/LSnormals.cpp
-    src/SolveLS/LSVelocityExtrapolation.cpp
-    src/SolveLS/WENODerivative.cpp
-    src/SolveLS/solveHJEq.cpp
-    src/SolveLS/godunovGradientNorm.cpp
-    src/SolveLS/LSreinitialization.cpp
-    src/SolveLS/LSeqSolve.cpp
-)
-target_include_directories(test_ls_eq_solve PRIVATE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(test_ls_eq_solve PRIVATE MPI::MPI_CXX PkgConfig::PETSC json-c::json-c)
-
 
 # The actual solver, built as modules get ported from MATLAB (mirrors the
 # beta_AD_correctu/<Module>/<File>.m layout). Add each new .cpp here by hand.
@@ -69,7 +43,7 @@ add_executable(ls_ibm
     src/ControlVar.cpp
     src/VariableNonDim.cpp
     src/Utilities/Coordinates.cpp
-    src/Utilities/DiffuFlux.cpp
+    src/Utilities/DiffFlux.cpp
     src/Utilities/ConvFlux.cpp
     src/Utilities/Timer.cpp
     src/Utilities/Interp.cpp
@@ -85,18 +59,7 @@ add_executable(ls_ibm
     src/SolveUVP/COEFFP.cpp
     src/SolveUVP/RHSP.cpp
     src/SolveUVP/RHSP_PISO.cpp
-    src/SolveTransport/CalculateQG.cpp
-    src/SolveTransport/CoeffPhiADRE.cpp
-    src/SolveTransport/RhsPhiADRE.cpp
-    src/SolveTransport/UpdateA1gPhi.cpp
-    src/SolveTransport/UpdateGhostReactionPhi.cpp
     src/SolveTransport/SolveTransportADRE.cpp
-    src/SolveLS/LSVelocityExtrapolation.cpp
-    src/SolveLS/WENODerivative.cpp
-    src/SolveLS/solveHJEq.cpp
-    src/SolveLS/godunovGradientNorm.cpp
-    src/SolveLS/LSreinitialization.cpp
-    src/SolveLS/LSeqSolve.cpp
     src/Models/flowSStransportUS.cpp
 )
 target_include_directories(ls_ibm PRIVATE ${PROJECT_SOURCE_DIR}/src)

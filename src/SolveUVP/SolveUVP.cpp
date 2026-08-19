@@ -6,12 +6,9 @@
 #include "RHSP_PISO.h"
 #include "../Utilities/ConvFlux.h"
 #include "../Utilities/ConvergenceResiduals.h"
-#include "../Utilities/Debug.h"
 #include "../Utilities/Timer.h"
 #include <cmath>
-#include <cstdio>
 #include <string>
-#include <json-c/json.h>
 
 // ============================================================================
 
@@ -54,12 +51,6 @@ void solveMomentumSystem(Mat CM, Vec RHS, Vec x, Field2D &sol, int iBegin, int i
     PCSetType(pc, controlVar.pc_type_momentum.c_str());
     KSPSetTolerances(ksp, controlVar.tolbicg, PETSC_DEFAULT, PETSC_DEFAULT, controlVar.maxit);
 
-    // Tested reverting this to match MATLAB's always-x0=0 bicgstab() call
-    // (suspecting the warm start was the source of the ~5e-4 U_star
-    // mismatch near the grain) -- ruled out: the mismatch was essentially
-    // unchanged, and cold-starting every SIMPLE iteration at this loose
-    // rtol=1e-5 measurably destabilized the outer M_in/M_out feedback
-    // loop (reintroduced the runaway-mass-imbalance blowup). Restored.
     for (int i = iBegin; i <= iEnd; ++i)
         for (int j = jBegin; j <= jEnd; ++j)
             VecSetValue(x, k(i, j), sol(i, j), INSERT_VALUES);
@@ -69,7 +60,7 @@ void solveMomentumSystem(Mat CM, Vec RHS, Vec x, Field2D &sol, int iBegin, int i
 
     KSPSolve(ksp, RHS, x);
 
-    if (debug::ksp && label) {
+    if (label) {
         KSPConvergedReason reason;
         PetscInt its;
         PetscReal rnorm;
@@ -148,66 +139,6 @@ void dumpForMatlabComparison(Mat M, Vec b, const std::string &matName, const std
     PetscViewerPopFormat(viewer);
     PetscViewerDestroy(&viewer);
 }
-
-// DEBUG (temporary): dump U_star/V_star -- the just-solved,
-// pre-pressure-correction velocity fields rhsP() consumes -- to a JSON
-// file, same flat row-major convention as VariableNonDim::
-// saveCurrentStateJson(), so debug_compare/compare_state.m can reshape
-// and diff them against SolveUVP.m's own pre-RHSP snapshot. Isolates
-// whether a downstream RHS_P discrepancy comes from U_star/V_star
-// themselves (upstream, already-solved momentum fields) or from rhsP()'s
-// own formula.
-void dumpPrePressureState(const Field2D &U_star, const Field2D &V_star, const std::string &path) {
-    json_object *root = json_object_new_object();
-    auto addField = [&](const char *name, const Field2D &f) {
-        json_object *arr = json_object_new_array();
-        for (double v : f.data()) json_object_array_add(arr, json_object_new_double(v));
-        json_object_object_add(root, name, arr);
-    };
-    addField("U_star", U_star);
-    addField("V_star", V_star);
-    FILE *fp = fopen(path.c_str(), "w");
-    if (fp) {
-        fputs(json_object_to_json_string_ext(root, JSON_C_TO_STRING_SPACED), fp);
-        fclose(fp);
-    }
-    json_object_put(root);
-}
-
-// DEBUG (temporary): appends one SIMPLE iteration's worth of traced-cell
-// U values to a growing JSON array, rewriting the whole file each call
-// -- tracks whether the ghost-cell U discrepancy compare_output.m found
-// at the final, post-SIMPLE-loop state (MATLAB exactly 0, C++ ~-0.5 at
-// these cells) is already present at iteration 1, or compounds over the
-// SIMPLE loop's ~24 passes for this timestep. Only ever called while
-// controlVar.iTime==1 (see call sites below), so the static array below
-// is safe to accumulate across this function's whole lifetime -- it's
-// only ever fed by that one solveUVP() call.
-// wanted[][2] here are C++ 0-based, matching main.cpp's ghost-cell
-// diagnostic; MATLAB-native equivalent is (i+1,j+1): (194,63) (208,63)
-// (194,140) (208,140) (190,64).
-void dumpIterTraceEntry(int ii, bool piso, const Field2D &U, const std::string &path) {
-    static const int wanted[5][2] = {{193, 62}, {207, 62}, {193, 139}, {207, 139}, {189, 63}};
-    static json_object *arr = json_object_new_array();
-
-    printf("  [iterTrace] ii=%d piso=%d U(193,62)=%.8e U(207,62)=%.8e U(193,139)=%.8e "
-           "U(207,139)=%.8e U(189,63)=%.8e\n",
-           ii, (int)piso, U(193, 62), U(207, 62), U(193, 139), U(207, 139), U(189, 63));
-
-    json_object *entry = json_object_new_object();
-    json_object_object_add(entry, "ii", json_object_new_int(ii));
-    json_object_object_add(entry, "piso", json_object_new_boolean(piso));
-    json_object *vals = json_object_new_array();
-    for (auto &w : wanted) json_object_array_add(vals, json_object_new_double(U(w[0], w[1])));
-    json_object_object_add(entry, "U", vals);
-    json_object_array_add(arr, entry);
-
-    FILE *fp = fopen(path.c_str(), "w");
-    if (fp) {
-        fputs(json_object_to_json_string_ext(arr, JSON_C_TO_STRING_SPACED), fp);
-        fclose(fp);
-    }
-}
 }  // namespace
 
 // ============================================================================
@@ -220,18 +151,6 @@ void formUV(Field2D &U_star, Field2D &V_star, const BC &bc, int iter) {
     // (zero-gradient).
 
     // ---- U ----
-
-    // MATLAB's FORMUV.m rebuilds U as a fresh zeros(imax,jmax+1) array on
-    // every call, so any cell the reshape/boundary lines below never touch
-    // implicitly stays zero. U_star here is mutated in place instead, so
-    // the one cell that MATLAB's coverage genuinely misses -- (imax-1,
-    // jmax-1), the outlet's last row just below the north wall, excluded
-    // by both the East loop (stops at jmax-2) and the corner copy below
-    // (which only writes (imax-1,jmax), not (imax-1,jmax-1)) -- would
-    // otherwise keep whatever stale/initial value it already held. Zero it
-    // explicitly so the corner copy below (which reads this cell) matches
-    // MATLAB's FORMUV.m exactly.
-    U_star(imax - 1, jmax - 1) = 0.0;
 
     // West/inlet: set to the prescribed inflow value at every row.
     for (int j = 1; j <= jmax - 1; ++j) {
@@ -287,15 +206,6 @@ void formUV(Field2D &U_star, Field2D &V_star, const BC &bc, int iter) {
     U_star(imax - 1, jmax) = U_star(imax - 1, jmax - 1);
 
     // ---- V ----
-
-    // Same reasoning as U's corner above: MATLAB's V = zeros(imax+1,jmax)
-    // reset means these four corners -- never covered by the N/S wall loop
-    // (i=1..imax-1) or the W/E edge loop (j=1..jmax-2) in either language
-    // -- are always exactly zero in MATLAB. Match that explicitly.
-    V_star(0, 0) = 0.0;
-    V_star(0, jmax - 1) = 0.0;
-    V_star(imax, 0) = 0.0;
-    V_star(imax, jmax - 1) = 0.0;
 
     // South/north walls: either the prescribed wall value directly, or a
     // zero-gradient copy, depending on the BC type at each wall.
@@ -518,7 +428,7 @@ void newUVPPiso(Field2D &U_star, Field2D &V_star, Field2D &P_star, const Field2D
 void solveUVP(ControlVar &controlVar, const Domain &domain,
               const Variables &variables, StateVar &stateVar, const IBM &ibm,
               const IBMCoeff &ibmCoeffU, const IBMCoeff &ibmCoeffV, const BC &bc,
-              const Flux &diffu_flux) {
+              const Flux &flux) {
     // U_star/V_star: the momentum-only (pre-pressure-correction) velocity
     // guess for the current iteration -- updated by solveMomentumSystem(),
     // then corrected in place by newUVP()/newUVPPiso().
@@ -593,7 +503,7 @@ void solveUVP(ControlVar &controlVar, const Domain &domain,
             // ConvFlux + COEFFU, matching SolveUVP.m's assembly_u block.
             ScopedTimer t("assembly_u");
             ConvFluxCoeffs convFluxU = computeConvFluxU(stateVar, controlVar, domain, variables, bc);
-            sysU = coeffU(stateVar, U_star_old, domain, diffu_flux.Diffu_U, convFluxU,
+            sysU = coeffU(stateVar, U_star_old, domain, flux.Diffu_U, convFluxU,
                            ibm, ibmCoeffU, variables, bc, controlVar.disc_scheme_vel,
                            CM_u, RHS_u);
         }
@@ -608,25 +518,12 @@ void solveUVP(ControlVar &controlVar, const Domain &domain,
                                  domain.imax - 2, controlVar, "U");
         }
 
-        // DEBUG (temporary, inline): traced-cell U_star values right out
-        // of the KSP solve, before formUV()/the pressure correction touch
-        // anything -- same 5 cells as dumpIterTraceEntry's post-correction
-        // print below, so the two together show whether the ghost-cell
-        // discrepancy is already present pre-formUV, or only appears
-        // after formUV/newUVP run.
-        if (controlVar.iTime == 1) {
-            printf("  [iterTrace postsolve] ii=%d U(193,62)=%.8e U(207,62)=%.8e U(193,139)=%.8e "
-                   "U(207,139)=%.8e U(189,63)=%.8e\n",
-                   controlVar.ii, U_star(193, 62), U_star(207, 62), U_star(193, 139),
-                   U_star(207, 139), U_star(189, 63));
-        }
-
         // ---- V-momentum ----
         MomentumCoeffs sysV;
         {
             ScopedTimer t("assembly_v");
             ConvFluxCoeffs convFluxV = computeConvFluxV(stateVar, controlVar, domain, variables, bc);
-            sysV = coeffV(stateVar, V_star_old, domain, diffu_flux.Diffu_V, convFluxV,
+            sysV = coeffV(stateVar, V_star_old, domain, flux.Diffu_V, convFluxV,
                            ibm, ibmCoeffV, variables, bc, controlVar.disc_scheme_vel,
                            CM_v, RHS_v);
         }
@@ -634,16 +531,6 @@ void solveUVP(ControlVar &controlVar, const Domain &domain,
             ScopedTimer t("solve_v");
             solveMomentumSystem(CM_v, RHS_v, x_v, V_star, 1, domain.imax - 1, 1, domain.jmax - 2,
                                  domain.imax - 1, controlVar, "V");
-        }
-
-        // DEBUG (temporary): dump U_star/V_star right after both KSP
-        // solves, before formUV() touches any boundary values -- isolates
-        // whether the interior discrepancy already exists right out of the
-        // linear solve, or gets introduced/amplified by formUV().
-        if (controlVar.ii == 1) {
-            dumpPrePressureState(
-                U_star, V_star,
-                "/home/groups/ibattiat/sxia/LS_IBM/LS_IBM_sxia/debug_compare/cpp_postsolve_state.json");
         }
 
         {
@@ -655,29 +542,10 @@ void solveUVP(ControlVar &controlVar, const Domain &domain,
             // values were just solved for above).
             formUV(U_star, V_star, bc, controlVar.ii);
 
-            // DEBUG (temporary, inline): same 5 traced cells, right after
-            // formUV() -- isolates whether formUV's boundary/outlet-
-            // rescale logic changes them (it shouldn't; none of these 5
-            // cells are on a formUV-touched row/column).
-            if (controlVar.iTime == 1) {
-                printf("  [iterTrace preRHSP] ii=%d U(193,62)=%.8e U(207,62)=%.8e U(193,139)=%.8e "
-                       "U(207,139)=%.8e U(189,63)=%.8e\n",
-                       controlVar.ii, U_star(193, 62), U_star(207, 62), U_star(193, 139),
-                       U_star(207, 139), U_star(189, 63));
-            }
-
-            // DEBUG (temporary): dump U_star/V_star right before rhsP()
-            // consumes them -- see debug_compare/compare_state.m.
-            if (controlVar.ii == 1) {
-                dumpPrePressureState(
-                    U_star, V_star,
-                    "/home/groups/ibattiat/sxia/LS_IBM/LS_IBM_sxia/debug_compare/cpp_prepressure_state.json");
-            }
-
             // ---- Pressure correction ----
 
             // fill RHS_p fills allocated-once/reset-every-iteration.
-            rhsP(U_star, V_star, domain, controlVar, ibmCoeffU, ibmCoeffV, RHS_p);
+            rhsP(U_star, V_star, domain, controlVar, ibm, RHS_p);
         }
 
         {
@@ -731,12 +599,6 @@ void solveUVP(ControlVar &controlVar, const Domain &domain,
             V_star_old = V_star;
             stateVar.U = U_star;
             stateVar.V = V_star;
-
-            if (controlVar.iTime == 1) {
-                dumpIterTraceEntry(
-                    controlVar.ii, false, stateVar.U,
-                    "/home/groups/ibattiat/sxia/LS_IBM/LS_IBM_sxia/debug_compare/cpp_iter_trace.json");
-            }
         }
 
         // ---- Convergence check ----
@@ -802,12 +664,6 @@ void solveUVP(ControlVar &controlVar, const Domain &domain,
                 V_star_old = V_star;
                 stateVar.U = U_star;
                 stateVar.V = V_star;
-
-                if (controlVar.iTime == 1) {
-                    dumpIterTraceEntry(
-                        controlVar.ii, true, stateVar.U,
-                        "/home/groups/ibattiat/sxia/LS_IBM/LS_IBM_sxia/debug_compare/cpp_iter_trace.json");
-                }
             }
 
             // Deviates from ConvergenceResiduals.m here: MATLAB reuses the
@@ -816,7 +672,7 @@ void solveUVP(ControlVar &controlVar, const Domain &domain,
             // Left untimed, like the convergence check itself: SolveUVP.m has
             // no timer around either, so folding this extra (C++-only) rhsP
             // into a category would make the two summaries non-comparable.
-            rhsP(stateVar.U, stateVar.V, domain, controlVar, ibmCoeffU, ibmCoeffV, RHS_p);
+            rhsP(stateVar.U, stateVar.V, domain, controlVar, ibm, RHS_p);
             // compute residuals 1) CM_u * U - RHS_U, 2) CM_v * V - RHS_V,  3) divergnece check, resuse RHS_p from pressure equation
             ConvergenceResult convPiso =
                 convergenceResiduals(stateVar.U, stateVar.V, RHS_p, controlVar.ii, PCOR, CM_u,
@@ -836,24 +692,6 @@ void solveUVP(ControlVar &controlVar, const Domain &domain,
             break;
         }
     }
-
-    // Match SolveUVP.m:328-332 (`fU = double(IBM_coeffU.flag_u == 0);
-    // StateVar.U = StateVar.U.*fU;`, same for V/flag_v): zero every non-
-    // fluid (ghost flag==1 or solid flag==2) cell's U/V before returning.
-    // The ghost cell's internally-reconstructed value is genuinely needed
-    // during the SIMPLE iterations -- it couples correctly into
-    // neighboring fluid cells' own equations, and tracks MATLAB's own
-    // internal value almost exactly throughout the loop (confirmed via
-    // the iterTrace diagnostic above) -- but MATLAB doesn't consider it a
-    // physically meaningful velocity, so it discards it here before
-    // reporting/saving the final state. Without this, C++ was instead
-    // saving the raw, unmasked ghost value.
-    for (int i = 0; i < stateVar.U.nx(); ++i)
-        for (int j = 0; j < stateVar.U.ny(); ++j)
-            if (ibmCoeffU.flag(i, j) != 0.0) stateVar.U(i, j) = 0.0;
-    for (int i = 0; i < stateVar.V.nx(); ++i)
-        for (int j = 0; j < stateVar.V.ny(); ++j)
-            if (ibmCoeffV.flag(i, j) != 0.0) stateVar.V(i, j) = 0.0;
 
     // Freeze this call's converged velocity as the next call's "old
     // timestep" reference for coeffU()/coeffV()'s S0 term (SolveUVP.m:267,
