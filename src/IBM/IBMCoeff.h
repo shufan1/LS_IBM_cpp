@@ -63,6 +63,30 @@ struct IBMCoeff {
     // baked into the extrapolation formula), parallel to I_g/J_g.
     std::vector<double> A1_g;
 
+    // The Robin-BC beta actually used for this ghost cell's B/E/A1_g,
+    // parallel to I_g/J_g -- normally just the caller's own beta
+    // (unchanged), but forced to 0 for ghost cells whose mirror point
+    // landed too close to the domain's outer edge (LSmirPointsBQnew.m's
+    // near-edge safeguard, phi/scalar grid only -- see LSmirPointsBQ.h).
+    // Written once here, alongside lambda_g_k/A1_g; computeA1gPhi()
+    // reads it back per QUICK iteration instead of ibm.beta_phi[i_s]
+    // directly, since it can't redo the mirror-point search itself to
+    // re-derive this.
+    std::vector<double> betaG;
+
+    // Each ghost cell's own distance to the true interface (abs(psi) at
+    // its own (I_g,J_g)), parallel to I_g/J_g -- static per-ghost-cell
+    // geometry, feeds A1_g's formula alongside betaG. Cached here for
+    // the same reason as betaG: computeA1gPhi() can't redo any of
+    // LSmirPointsBQ()'s own per-ghost-cell work.
+    std::vector<double> r_g;
+
+    // Delta = sqrt(2)*dx for this grid, the same single constant for
+    // every ghost cell in this IBMCoeff -- cached here (rather than
+    // recomputed from Domain) purely so computeA1gPhi() doesn't need a
+    // Domain reference just for this one scalar.
+    double Delta = 0.0;
+
     // == I_g.size(), kept as its own field only because LSPointIdent.m
     // returns it as an explicit output too, rather than making every
     // caller call .size().

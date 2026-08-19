@@ -2,7 +2,8 @@
 #include "SolveUVP.h"  // pinnedPressureCell()
 
 void rhsP(const Field2D &U_star, const Field2D &V_star, const Domain &domain,
-          const ControlVar &controlVar, const IBM &ibm, Vec RHS_P2) {
+          const ControlVar &controlVar, const IBMCoeff &ibmCoeffU, const IBMCoeff &ibmCoeffV,
+          Vec RHS_P2) {
     const int imax = domain.imax;
     const int jmax = domain.jmax;
 
@@ -13,15 +14,15 @@ void rhsP(const Field2D &U_star, const Field2D &V_star, const Domain &domain,
     const int kPin = kFull(pin.i0, pin.j0);
     auto kReduced = [kPin](int kf) { return kf < kPin ? kf : kf - 1; };
 
-    // Ghost-cell placeholder substitution (RHSP.h): reads ibm.flag_u/
-    // flag_v instead of mutating U_star/V_star -- see RHSP.h for why
-    // that matches MATLAB's own local-copy scoping without needing an
+    // Ghost-cell placeholder substitution (RHSP.h): reads ibmCoeffU.flag/
+    // ibmCoeffV.flag instead of mutating U_star/V_star -- see RHSP.h for
+    // why that matches MATLAB's own local-copy scoping without needing an
     // actual copy. phi_inside is hardcoded to 0 here, matching RHSP.m's
     // own local `phi_inside=0` (not ibm.u_inside_psi -- a separate,
     // coincidentally-equal constant in the active config).
     const double phi_inside = 0.0;
-    auto uMasked = [&](int i, int j) { return ibm.flag_u(i, j) == 1.0 ? phi_inside : U_star(i, j); };
-    auto vMasked = [&](int i, int j) { return ibm.flag_v(i, j) == 1.0 ? 0.0 : V_star(i, j); };
+    auto uMasked = [&](int i, int j) { return ibmCoeffU.flag(i, j) == 1.0 ? phi_inside : U_star(i, j); };
+    auto vMasked = [&](int i, int j) { return ibmCoeffV.flag(i, j) == 1.0 ? 0.0 : V_star(i, j); };
 
     // P-cell (i,j)'s west/east U-faces are U(i-1,j)/U(i,j); south/north
     // V-faces are V(i,j-1)/V(i,j) -- same face convention already

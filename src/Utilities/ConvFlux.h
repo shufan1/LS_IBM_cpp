@@ -3,7 +3,7 @@
 #include "../ControlVar.h"
 
 // Result of computing one equation's convective face fluxes -- the
-// moving-fluid counterpart to DiffFluxCoeffs (Utilities/DiffFlux.h).
+// moving-fluid counterpart to DiffFluxCoeffs (Utilities/DiffuFlux.h).
 struct ConvFluxCoeffs {
     // Face mass fluxes (velocity interpolated to each face, times face
     // area).
@@ -37,3 +37,14 @@ ConvFluxCoeffs computeConvFluxU(const StateVar &stateVar, const ControlVar &cont
 // outlet-row extension exists for V.
 ConvFluxCoeffs computeConvFluxV(const StateVar &stateVar, const ControlVar &controlVar,
                                  const Domain &domain, const Variables &variables, const BC &bc);
+
+// Scalar transport (ConvFlux.m's flag==0 branch), sized (imax+1,
+// jmax+1) like computeDiffFluxPhi. Computed once per
+// SolveTransportADRE() call (velocity is frozen for the whole transport
+// solve), not re-derived per QUICK iteration. Unlike U/V's own
+// convective flux, there's no CoEW/CoNS interpolation and no BC-
+// dependent special case -- U/V already live exactly at a P-cell's
+// faces, so each face flux is just that face's raw U/V value times the
+// face length, always, everywhere in the interior.
+ConvFluxCoeffs computeConvFluxPhi(const StateVar &stateVar, const ControlVar &controlVar,
+                                   const Domain &domain, const Variables &variables, const BC &bc);

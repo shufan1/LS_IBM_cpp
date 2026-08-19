@@ -1,6 +1,7 @@
 #include "Timer.h"
 #include <json-c/json.h>
 #include <cstdio>
+#include <limits>
 #include <numeric>
 #include <stdexcept>
 
@@ -27,12 +28,34 @@ void Timer::printSummary() {
     printf("                      TIMING SUMMARY (seconds)                       \n");
     printf("=========================================================================== \n");
     printf("%-28s %10s %12s %12s\n", "category", "calls", "total(s)", "mean(s)");
+
+    // total_runtime is excluded from the table and reported below instead,
+    // matching RunADRE_no_LS.m:117 -- it wraps all the others, so summing
+    // it in with them would double-count.
+    double instrumentedTotal = 0.0;
     for (const auto &entry : registry()) {
         const std::string &name = entry.first;
+        if (name == "total_runtime") continue;
         const std::vector<double> &samples = entry.second;
         double total = std::accumulate(samples.begin(), samples.end(), 0.0);
-        double mean = samples.empty() ? 0.0 : total / static_cast<double>(samples.size());
+        // MATLAB's mean([]) is NaN, and it prints that for never-called
+        // categories (e.g. solve_p_piso with PISO off). Matched here so
+        // the two tables diff cleanly.
+        double mean = samples.empty() ? std::numeric_limits<double>::quiet_NaN()
+                                      : total / static_cast<double>(samples.size());
         printf("%-28s %10zu %12.4f %12.6f\n", name.c_str(), samples.size(), total, mean);
+        instrumentedTotal += total;
+    }
+
+    auto it = registry().find("total_runtime");
+    if (it != registry().end()) {
+        const std::vector<double> &samples = it->second;
+        double total = std::accumulate(samples.begin(), samples.end(), 0.0);
+        printf("--------------------------------------------------------------------------- \n");
+        printf("%-28s %10zu %12.4f\n", "total_runtime", samples.size(), total);
+        if (total > 0.0)
+            printf("instrumented categories cover %.1f%% of total_runtime\n",
+                   100.0 * instrumentedTotal / total);
     }
 }
 

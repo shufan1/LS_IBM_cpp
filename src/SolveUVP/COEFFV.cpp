@@ -3,7 +3,7 @@
 #include <stdexcept>
 
 MomentumCoeffs coeffV(const StateVar &stateVar, const Field2D &V_star_old,
-                       const Domain &domain, const DiffFluxCoeffs &diffFluxV,
+                       const Domain &domain, const DiffFluxCoeffs &diffuFluxV,
                        const ConvFluxCoeffs &convFluxV, const IBM &ibm,
                        const IBMCoeff &ibmCoeffV, const Variables &variables, const BC &bc,
                        int disc_scheme, Mat CM, Vec RHS) {
@@ -15,10 +15,10 @@ MomentumCoeffs coeffV(const StateVar &stateVar, const Field2D &V_star_old,
 
     const int imax = domain.imax;
     const int jmax = domain.jmax;
-    const Field2D &De = diffFluxV.De;
-    const Field2D &Dw = diffFluxV.Dw;
-    const Field2D &Dn = diffFluxV.Dn;
-    const Field2D &Ds = diffFluxV.Ds;
+    const Field2D &De = diffuFluxV.De;
+    const Field2D &Dw = diffuFluxV.Dw;
+    const Field2D &Dn = diffuFluxV.Dn;
+    const Field2D &Ds = diffuFluxV.Ds;
     const Field2D &Fe = convFluxV.Fe;
     const Field2D &Fw = convFluxV.Fw;
     const Field2D &Fn = convFluxV.Fn;
@@ -148,15 +148,17 @@ MomentumCoeffs coeffV(const StateVar &stateVar, const Field2D &V_star_old,
     // S_ur=S_u=0, so c.S becomes A1_g directly. The mirror point's
     // neighbor coupling (-lambda_g_k at each of I1..I6/J1..J6) can't be
     // added here yet -- it needs k(i,j), which isn't defined until
-    // below, and more importantly it has to be inserted AFTER the main
-    // fill loop's own MatSetValue calls, not before: MatZeroEntries
-    // (right below) would wipe anything set here first, and even past
-    // that, the fill loop writes INSERT_VALUES (overwrite) to every
-    // row's 4 standard-band columns -- if a mirror-point neighbor ever
-    // coincides with one of those, an earlier -lambda_g_k write here
-    // would get silently overwritten with 0. See the "Ghost-cell
-    // mirror-point coupling" block after the fill loop for the actual
-    // insertion, placed last so it always wins.
+    // below, and MatZeroEntries (right below) would wipe anything set
+    // here first anyway. See the "Ghost-cell mirror-point coupling"
+    // block after the fill loop for the actual insertion -- both that
+    // loop and the main fill loop above use ADD_VALUES (CM is freshly
+    // zeroed, so a single write is unaffected) rather than
+    // INSERT_VALUES, matching MATLAB's own A_g_sparse construction
+    // (literally a sum of one sparse(...) matrix per corner): any
+    // mirror-point neighbor that happens to coincide with a standard
+    // band column, or with another of the same ghost cell's own
+    // corners, gets correctly summed instead of one contribution
+    // silently overwriting the other.
     for (size_t idx = 0; idx < ibmCoeffV.I_g.size(); ++idx) {
         int ig = ibmCoeffV.I_g[idx];
         int jg = ibmCoeffV.J_g[idx];
@@ -180,11 +182,11 @@ MomentumCoeffs coeffV(const StateVar &stateVar, const Field2D &V_star_old,
     for (int i = 1; i <= imax - 1; ++i) {
         for (int j = 1; j <= jmax - 2; ++j) {
             int row = k(i, j);
-            MatSetValue(CM, row, row, c.ap(i, j), INSERT_VALUES);
-            if (i > 1) MatSetValue(CM, row, k(i - 1, j), c.aw(i, j), INSERT_VALUES);
-            if (i < imax - 1) MatSetValue(CM, row, k(i + 1, j), c.ae(i, j), INSERT_VALUES);
-            if (j > 1) MatSetValue(CM, row, k(i, j - 1), c.as(i, j), INSERT_VALUES);
-            if (j < jmax - 2) MatSetValue(CM, row, k(i, j + 1), c.an(i, j), INSERT_VALUES);
+            MatSetValue(CM, row, row, c.ap(i, j), ADD_VALUES);
+            if (i > 1) MatSetValue(CM, row, k(i - 1, j), c.aw(i, j), ADD_VALUES);
+            if (i < imax - 1) MatSetValue(CM, row, k(i + 1, j), c.ae(i, j), ADD_VALUES);
+            if (j > 1) MatSetValue(CM, row, k(i, j - 1), c.as(i, j), ADD_VALUES);
+            if (j < jmax - 2) MatSetValue(CM, row, k(i, j + 1), c.an(i, j), ADD_VALUES);
             VecSetValue(RHS, row, c.S(i, j), INSERT_VALUES);
         }
     }
@@ -210,7 +212,7 @@ MomentumCoeffs coeffV(const StateVar &stateVar, const Field2D &V_star_old,
                         ibmCoeffV.I_g[idx], ibmCoeffV.J_g[idx], ni, nj, imax - 1, jmax - 2);
                 return;
             }
-            MatSetValue(CM, row, k(ni, nj), val, INSERT_VALUES);
+            MatSetValue(CM, row, k(ni, nj), val, ADD_VALUES);
         };
         checkAndSet(ibmCoeffV.I1[idx], ibmCoeffV.J1[idx], -ibmCoeffV.lambda_g_1[idx]);
         checkAndSet(ibmCoeffV.I2[idx], ibmCoeffV.J2[idx], -ibmCoeffV.lambda_g_2[idx]);

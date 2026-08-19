@@ -1,4 +1,5 @@
 #include "ConvergenceResiduals.h"
+#include "Debug.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -42,7 +43,7 @@ double momentumResidual(Mat CM, Vec RHS, const Field2D &phi, int iBegin, int iEn
     VecDestroy(&diag);
     VecDestroy(&prod);
 
-    if (label) {
+    if (debug::residual && label) {
         PetscPrintf(PETSC_COMM_WORLD, "      [%s] numerator=%e denominator=%e\n", label, numerator,
                     denominator);
     }
